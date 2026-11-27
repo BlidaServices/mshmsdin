@@ -35,6 +35,7 @@ class CaptionRepository(private val context: Context) {
 
     private var hasThumbImage: Boolean = false
     private var hasChannelAvatar: Boolean = false
+    private var hasTextN: Boolean = false
 
     val isLoaded: Boolean get() = conn != null
     var openError: String? = null
@@ -220,6 +221,7 @@ class CaptionRepository(private val context: Context) {
             conn = c
             dbFileName = file.name
             hasCues = tableExists(c, "cues")
+            hasTextN = tableExists(c, "cues_fts") && columnExists(c, "cues_fts", "text_n")
             hasThumbImage = columnExists(c, "videos", "thumb_image")
             hasChannelAvatar = columnExists(c, "channels", "avatar")
             runCatching {
@@ -963,6 +965,7 @@ class CaptionRepository(private val context: Context) {
         if (query.isBlank()) return emptyList()
 
         fun run(match: String): List<SearchHit> {
+            val expr = if (hasTextN) "text_n : ($match)" else match
             val sql = "SELECT c.video_rowid,c.video_id,c.start_time,c.text,v.title,ch.title,v.date,v.time " +
                 "FROM cues_fts JOIN cues c ON c.rowid=cues_fts.rowid " +
                 "JOIN videos v ON v.rowid=c.video_rowid " +
@@ -970,9 +973,9 @@ class CaptionRepository(private val context: Context) {
                 "WHERE cues_fts MATCH ?" + (if (channelId == null) "" else " AND v.channel_id=?") +
                 " LIMIT ?"
             val args = buildList {
-                add(match)
+                add(expr)
                 if (channelId != null) add(channelId)
-                add((limit * 8).toString())
+                add((limit * 4).toString())
             }.toTypedArray()
             val rows = query(c, sql, args) { rs ->
                 buildList {
@@ -1024,7 +1027,7 @@ class CaptionRepository(private val context: Context) {
         val first = runCatching { run(match) }
         if (first.isSuccess) return first.getOrThrow()
         val sanitized = Regex("[\\p{L}\\p{N}]+").findAll(query)
-            .joinToString(" AND ") { "\"$it\"*" }
+            .joinToString(" AND ") { "\"$it\"" }
         if (sanitized.isBlank()) return emptyList()
         return runCatching { run(sanitized) }.getOrDefault(emptyList())
     }
@@ -1093,17 +1096,13 @@ class CaptionRepository(private val context: Context) {
         }
 
         fun toMatch(query: String): String {
-            val clitics = listOf("", "ال", "و", "وال", "ب", "بال", "ل", "لل", "ف", "ك", "ت")
             fun clean(t: String) = t
                 .replace(Regex("[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]"), "")
                 .replace(Regex("[^\\p{L}\\p{N}]"), "")
-            val tokens = query.trim().split(Regex("\\s+")).map(::clean).filter { it.isNotEmpty() }
-            if (tokens.isEmpty()) return ""
-            val last = tokens.last()
-            val lastClause = (if (tokens.size == 1) clitics.map { "$it$last" } else listOf(last))
-                .joinToString(" OR ") { "\"$it\"*" }
-            val head = tokens.dropLast(1).map { "\"$it\"*" }
-            return (head + "($lastClause)").joinToString(" AND ")
+            return query.trim().split(Regex("\\s+"))
+                .map(::clean)
+                .filter { it.isNotEmpty() }
+                .joinToString(" AND ") { "\"$it\"" }
         }
     }
 }
