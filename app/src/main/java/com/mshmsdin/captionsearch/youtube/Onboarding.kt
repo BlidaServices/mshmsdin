@@ -1,7 +1,7 @@
 package com.mshmsdin.captionsearch.youtube
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -64,6 +64,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mshmsdin.captionsearch.data.CaptionRepository
@@ -432,38 +433,64 @@ private fun ImportPage(
     }
 }
 
+private data class BlockState(val ax: Float, val ay: Float, val bx: Float, val by: Float)
+
+private val shuffleSteps = listOf(
+    BlockState(1f, 1f, 1f, 13f),
+    BlockState(13f, 1f, 1f, 13f),
+    BlockState(13f, 1f, 1f, 1f),
+    BlockState(13f, 13f, 1f, 1f),
+    BlockState(13f, 13f, 13f, 1f),
+    BlockState(1f, 13f, 13f, 1f),
+    BlockState(1f, 13f, 13f, 13f),
+    BlockState(1f, 1f, 13f, 13f)
+)
+
 @Composable
 private fun BlocksShuffle2(
+    color: Color,
     modifier: Modifier = Modifier,
-    color: Color = MaterialTheme.colorScheme.primary
+    size: Dp = 96.dp
 ) {
-    val transition = rememberInfiniteTransition(label = "blocksShuffle2")
-    val p by transition.animateFloat(
+    val t = rememberInfiniteTransition(label = "blocksShuffle2")
+    val p by t.animateFloat(
         initialValue = 0f,
-        targetValue = 1f,
+        targetValue = 8f,
         animationSpec = infiniteRepeatable(
-            animation = tween(620, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
+            animation = tween(durationMillis = 1600, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
         ),
-        label = "shuffle"
+        label = "step"
     )
-    Canvas(modifier) {
-        val u = size.minDimension / 24f
-        val block = 10f * u
-        val x = (1f + 12f * p) * u
-        val y1 = (1f + 12f * p) * u
-        val y2 = (13f - 12f * p) * u
-        val radius = CornerRadius(u, u)
-        drawRoundRect(topLeft = Offset(x, y1), size = Size(block, block),
-            cornerRadius = radius, color = color)
-        drawRoundRect(topLeft = Offset(x, y2), size = Size(block, block),
-            cornerRadius = radius, color = color)
+    Canvas(modifier.size(size)) {
+        val s = this.size.minDimension / 24f
+        val ox = (this.size.width - 24f * s) / 2f
+        val oy = (this.size.height - 24f * s) / 2f
+        val i = p.toInt().coerceIn(0, 7)
+        val f = (p - i).coerceIn(0f, 1f)
+        val a = shuffleSteps[i]
+        val b = shuffleSteps[(i + 1) % 8]
+        fun lerp(u: Float, v: Float) = u + (v - u) * f
+        val blockSize = Size(10f * s, 10f * s)
+        val radius = CornerRadius(1f * s)
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(ox + lerp(a.ax, b.ax) * s, oy + lerp(a.ay, b.ay) * s),
+            size = blockSize,
+            cornerRadius = radius
+        )
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(ox + lerp(a.bx, b.bx) * s, oy + lerp(a.by, b.by) * s),
+            size = blockSize,
+            cornerRadius = radius
+        )
     }
 }
 
 @Composable
 private fun ImportBusyContent(scheme: androidx.compose.material3.ColorScheme) {
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        BlocksShuffle2(Modifier.size(60.dp), color = scheme.primary)
+        BlocksShuffle2(color = scheme.primary, size = 96.dp)
     }
 }
