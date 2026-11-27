@@ -649,6 +649,9 @@ class CaptionRepository(private val context: Context) {
         return list.firstOrNull()
     }
 
+    fun videoById(id: String): VideoItem? =
+        runVideos("v.id = ?", listOf(id), 1, 0).firstOrNull()
+
     private var topicsCache: List<TopicItem>? = null
     private val channelFeedCache = LinkedHashMap<String, List<VideoItem>>()
 
@@ -800,21 +803,22 @@ class CaptionRepository(private val context: Context) {
         val out = mutableListOf<SuggestionItem>()
         runCatching {
             val titleSql = if (channelId == null) {
-                "SELECT DISTINCT title FROM videos WHERE title LIKE ? ORDER BY date DESC LIMIT ?"
+                "SELECT id,title FROM videos WHERE title LIKE ? ORDER BY date DESC LIMIT ?"
             } else {
-                "SELECT DISTINCT title FROM videos WHERE title LIKE ? AND channel_id=? ORDER BY date DESC LIMIT ?"
+                "SELECT id,title FROM videos WHERE title LIKE ? AND channel_id=? ORDER BY date DESC LIMIT ?"
             }
             c.prepareStatement(titleSql).use { ps ->
                 ps.setString(1, like)
                 if (channelId == null) ps.setInt(2, limit) else { ps.setString(2, channelId); ps.setInt(3, limit) }
                 ps.executeQuery().use { rs ->
-                    while (rs.next()) out.add(SuggestionItem(rs.getString(1) ?: "", "video"))
+                    while (rs.next()) out.add(SuggestionItem(
+                        rs.getString(2) ?: "", "video", videoId = rs.getString(1) ?: ""))
                 }
             }
             val topicSql = if (channelId == null) {
-                "SELECT name FROM topics WHERE name LIKE ? ORDER BY video_count DESC LIMIT ?"
+                "SELECT topic_id,name FROM topics WHERE name LIKE ? ORDER BY video_count DESC LIMIT ?"
             } else {
-                "SELECT t.name FROM topics t JOIN video_topics vt ON vt.topic_id=t.topic_id " +
+                "SELECT t.topic_id,t.name FROM topics t JOIN video_topics vt ON vt.topic_id=t.topic_id " +
                     "JOIN videos v ON v.id=vt.video_id WHERE t.name LIKE ? AND v.channel_id=? " +
                     "GROUP BY t.topic_id ORDER BY COUNT(v.id) DESC LIMIT ?"
             }
@@ -822,7 +826,25 @@ class CaptionRepository(private val context: Context) {
                 ps.setString(1, like)
                 if (channelId == null) ps.setInt(2, limit) else { ps.setString(2, channelId); ps.setInt(3, limit) }
                 ps.executeQuery().use { rs ->
-                    while (rs.next()) out.add(SuggestionItem(rs.getString(1) ?: "", "topic"))
+                    while (rs.next()) out.add(SuggestionItem(
+                        rs.getString(2) ?: "", "topic", topicId = rs.getInt(1)))
+                }
+            }
+            if (tableExists(c, "seo_fts")) {
+                val sql = if (channelId == null) {
+                    "SELECT q,video_id,start FROM seo_fts WHERE q LIKE ? AND type='question' LIMIT ?"
+                } else {
+                    "SELECT s.q,s.video_id,s.start FROM seo_fts s JOIN videos v ON v.id=s.video_id " +
+                        "WHERE s.q LIKE ? AND s.type='question' AND v.channel_id=? LIMIT ?"
+                }
+                c.prepareStatement(sql).use { ps ->
+                    ps.setString(1, like)
+                    if (channelId == null) ps.setInt(2, limit) else { ps.setString(2, channelId); ps.setInt(3, limit) }
+                    ps.executeQuery().use { rs ->
+                        while (rs.next()) out.add(SuggestionItem(
+                            rs.getString(1) ?: "", "سؤال", videoId = rs.getString(2) ?: "",
+                            start = rs.getString(3) ?: "00:00:00"))
+                    }
                 }
             }
         }

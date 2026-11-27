@@ -77,7 +77,10 @@ data class ChapterItem(
 
 data class SuggestionItem(
     val label: String,
-    val kind: String
+    val kind: String,
+    val videoId: String? = null,
+    val start: String? = null,
+    val topicId: Int? = null
 )
 
 data class FilterState(

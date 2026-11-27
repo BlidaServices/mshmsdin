@@ -623,6 +623,7 @@ fun SearchView(
     channelId: String?,
     autoFocus: Boolean = false,
     onAutoFocus: () -> Unit = {},
+    onOpenSuggestion: (com.mshmsdin.captionsearch.data.SuggestionItem) -> Unit,
     onOpenHit: (SearchHit) -> Unit
 ) {
     var suggestions by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.SuggestionItem>>(emptyList()) }
@@ -695,7 +696,7 @@ fun SearchView(
                 suggestions.take(8).forEach { s ->
                     Text("${s.label}  ·  ${s.kind}", modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { onQuery(s.label) }
+                        .clickable { onOpenSuggestion(s) }
                         .padding(vertical = 8.dp),
                         maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }

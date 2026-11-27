@@ -153,7 +153,20 @@ private fun CaptionAppRoot() {
             Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 SearchView(repository, query, { query = it }, searchChannel,
                     autoFocus = searchFocus,
-                    onAutoFocus = { searchFocus = false }) { hit ->
+                    onAutoFocus = { searchFocus = false },
+                    onOpenSuggestion = { s ->
+                        if (s.kind == "topic" && s.topicId != null) {
+                            listResult = FilterState(topicId = s.topicId) to s.label
+                            searching = false
+                        } else if (!s.videoId.isNullOrBlank()) {
+                            scope.launch {
+                                val item = withContext(Dispatchers.IO) { repository.videoById(s.videoId) }
+                                if (item != null) selected = VideoTarget(item, secondsOf(s.start ?: "00:00:00"))
+                            }
+                        } else {
+                            query = s.label
+                        }
+                    }) { hit ->
                     scope.launch {
                         val item = withContext(Dispatchers.IO) { repository.videoByRow(hit.videoRowId) }
                         if (item != null) selected = VideoTarget(item, secondsOf(hit.start), query)
