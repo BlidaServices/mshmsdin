@@ -110,6 +110,7 @@ private fun CaptionAppRoot() {
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
         importing = true
+        importDone = false
         scope.launch {
             val error = try {
                 withContext(Dispatchers.IO) { repository.importFrom(uri) }
