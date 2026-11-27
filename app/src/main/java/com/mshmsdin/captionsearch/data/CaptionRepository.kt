@@ -630,7 +630,8 @@ class CaptionRepository(private val context: Context) {
             "short" -> "v.channel_id=? AND v.is_short=1"
             else -> "v.channel_id=?"
         }
-        val items = runVideos(clause, listOf(channelId), limit, offset)
+        val sql = videoSelect() + " WHERE $clause ORDER BY v.rowid ASC LIMIT ? OFFSET ?"
+        val items = queryVideos(sql, listOf(channelId, limit, offset))
         if (offset == 0) {
             if (channelFeedCache.size >= 4) channelFeedCache.clear()
             channelFeedCache[key] = items
