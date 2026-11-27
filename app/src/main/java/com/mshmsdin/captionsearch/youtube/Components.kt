@@ -135,6 +135,23 @@ fun TypeBadge(item: VideoItem) {
 }
 
 @Composable
+fun CaptionBadge(item: VideoItem) {
+    Surface(
+        color = Color.Black.copy(alpha = 0.78f),
+        shape = RoundedCornerShape(4.dp),
+        modifier = Modifier.padding(6.dp)
+    ) {
+        Text(
+            "CC",
+            color = if (item.caption) Color.White else Color.Gray,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+        )
+    }
+}
+
+@Composable
 private fun DurationBadge(item: VideoItem, modifier: Modifier = Modifier, small: Boolean = false) {
     if (item.live) return
     Surface(color = Color.Black.copy(alpha = 0.78f), shape = RoundedCornerShape(4.dp),
@@ -158,7 +175,9 @@ private fun VideoCardLarge(item: VideoItem, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)))
-            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopStart)) {
+                Row { CaptionBadge(item); TypeBadge(item) }
+            }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item) }
         }
         Spacer(Modifier.height(9.dp))
@@ -171,8 +190,8 @@ private fun VideoCardLarge(item: VideoItem, onClick: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text(item.channel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text("${item.date} · ${if (item.caption) "كابشن" else "بدون كابشن"}",
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                Text(item.date, fontSize = 11.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
@@ -183,7 +202,9 @@ private fun VideoCardMedium(item: VideoItem, onClick: () -> Unit) {
     Column(Modifier.clickable(onClick = onClick).padding(4.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)))
-            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopStart)) {
+                Row { CaptionBadge(item); TypeBadge(item) }
+            }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item) }
         }
         Spacer(Modifier.height(6.dp))
@@ -204,7 +225,9 @@ private fun VideoCardSmall(item: VideoItem, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.size(150.dp, 84.dp).clip(RoundedCornerShape(7.dp)))
-            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopStart)) {
+                Row { CaptionBadge(item); TypeBadge(item) }
+            }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item, small = true) }
         }
         Spacer(Modifier.width(9.dp))
