@@ -141,12 +141,11 @@ fun CaptionBadge(item: VideoItem) {
         shape = RoundedCornerShape(4.dp),
         modifier = Modifier.padding(6.dp)
     ) {
-        Text(
-            "CC",
-            color = if (item.caption) Color.White else Color.Gray,
-            fontSize = 9.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp)
+        Icon(
+            YouTubeIcons.Caption,
+            contentDescription = if (item.caption) "يوجد كابشن" else "بدون كابشن",
+            tint = if (item.caption) Color.White else Color.Gray,
+            modifier = Modifier.size(14.dp).padding(2.dp)
         )
     }
 }
@@ -175,9 +174,8 @@ private fun VideoCardLarge(item: VideoItem, onClick: () -> Unit) {
     Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 10.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(10.dp)))
-            Box(Modifier.align(Alignment.TopStart)) {
-                Row { CaptionBadge(item); TypeBadge(item) }
-            }
+            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopEnd)) { CaptionBadge(item) }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item) }
         }
         Spacer(Modifier.height(9.dp))
@@ -202,9 +200,8 @@ private fun VideoCardMedium(item: VideoItem, onClick: () -> Unit) {
     Column(Modifier.clickable(onClick = onClick).padding(4.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(8.dp)))
-            Box(Modifier.align(Alignment.TopStart)) {
-                Row { CaptionBadge(item); TypeBadge(item) }
-            }
+            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopEnd)) { CaptionBadge(item) }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item) }
         }
         Spacer(Modifier.height(6.dp))
@@ -225,9 +222,8 @@ private fun VideoCardSmall(item: VideoItem, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 7.dp)) {
         Box {
             Thumbnail(item.thumb, Modifier.size(150.dp, 84.dp).clip(RoundedCornerShape(7.dp)))
-            Box(Modifier.align(Alignment.TopStart)) {
-                Row { CaptionBadge(item); TypeBadge(item) }
-            }
+            Box(Modifier.align(Alignment.TopStart)) { TypeBadge(item) }
+            Box(Modifier.align(Alignment.TopEnd)) { CaptionBadge(item) }
             Box(Modifier.align(Alignment.BottomEnd)) { DurationBadge(item, small = true) }
         }
         Spacer(Modifier.width(9.dp))

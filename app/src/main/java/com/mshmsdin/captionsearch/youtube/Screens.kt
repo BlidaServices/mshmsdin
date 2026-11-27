@@ -273,9 +273,8 @@ fun ShortsView(repository: CaptionRepository, version: Long, onOpen: (VideoItem)
                     Box {
                         Thumbnail(videos[i].thumb,
                             Modifier.fillMaxWidth().aspectRatio(9f / 16f).clip(RoundedCornerShape(10.dp)))
-                        Box(Modifier.align(Alignment.TopStart)) {
-                            Row { CaptionBadge(videos[i]); TypeBadge(videos[i]) }
-                        }
+                        Box(Modifier.align(Alignment.TopStart)) { TypeBadge(videos[i]) }
+                        Box(Modifier.align(Alignment.TopEnd)) { CaptionBadge(videos[i]) }
                     }
                     Text(videos[i].title, fontSize = 12.sp, maxLines = 2,
                         overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 5.dp))

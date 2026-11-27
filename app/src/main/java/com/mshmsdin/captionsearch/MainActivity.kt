@@ -1,5 +1,6 @@
 package com.mshmsdin.captionsearch
 
+import android.content.Context
 import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
@@ -56,6 +57,7 @@ import com.mshmsdin.captionsearch.ui.theme.CaptionSearchTheme
 import com.mshmsdin.captionsearch.youtube.ChannelDetailView
 import com.mshmsdin.captionsearch.youtube.ChannelsView
 import com.mshmsdin.captionsearch.youtube.ChannelUiState
+import com.mshmsdin.captionsearch.youtube.OnboardingScreen
 import com.mshmsdin.captionsearch.youtube.HomeView
 import com.mshmsdin.captionsearch.youtube.SearchView
 import com.mshmsdin.captionsearch.youtube.SettingsSheet
@@ -100,6 +102,10 @@ private fun CaptionAppRoot() {
     var searchFocus by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
+    val prefs = remember { context.getSharedPreferences("captionsearch_prefs", Context.MODE_PRIVATE) }
+    var onboardingFinished by remember { mutableStateOf(prefs.getBoolean("onboarding_done", false)) }
+    var onboardingStep by remember { mutableStateOf(if (onboardingFinished) 2 else 0) }
+    var importDone by remember { mutableStateOf(false) }
 
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -111,6 +117,8 @@ private fun CaptionAppRoot() {
             isLoaded = repository.isLoaded
             if (error == null) {
                 version++
+                importDone = true
+                if (onboardingStep == 1) onboardingStep = 2
                 Toast.makeText(context, "تم", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -126,6 +134,21 @@ private fun CaptionAppRoot() {
     }
 
     CaptionSearchTheme(darkTheme = true, themeName = theme) {
+        if (!onboardingFinished) {
+            OnboardingScreen(
+                step = onboardingStep,
+                importing = importing,
+                importDone = importDone,
+                onNext = { onboardingStep = 1 },
+                onImport = { importer.launch(arrayOf("*/*")) },
+                onStart = {
+                    prefs.edit().putBoolean("onboarding_done", true).apply()
+                    onboardingFinished = true
+                }
+            )
+            return@CaptionSearchTheme
+        }
+
         if (checking || !isLoaded) {
             Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 Column(Modifier.fillMaxSize().padding(24.dp),
