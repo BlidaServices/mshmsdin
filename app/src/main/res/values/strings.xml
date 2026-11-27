@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">بحث الكابشن</string>
+    <string name="search_hint">ابحث في نصوص الكابشن والعناوين…</string>
+    <string name="action_import">استيراد قاعدة البيانات</string>
+    <string name="empty_no_db">لم تُستورد قاعدة بيانات بعد\nاضغط على أيقونة الاستيراد في الأعلى</string>
+    <string name="empty_no_results">لا توجد نتائج مطابقة</string>
+    <string name="empty_type">اكتب كلمة للبحث</string>
+    <string name="section_cues">نتائج في نص الكابشن</string>
+    <string name="section_videos">نتائج في العنوان والوصف</string>
+    <string name="badge_caption_yes">مع كابشن</string>
+    <string name="badge_caption_no">بدون كابشن</string>
+    <string name="detail_transcript">نص الكابشن الكامل</string>
+    <string name="detail_description">الملخص</string>
+    <string name="detail_summary">الملخص</string>
+    <string name="detail_chapters">الفصول</string>
+    <string name="detail_hashtags">هاشتاغات</string>
+    <string name="detail_questions">أسئلة مقترحة</string>
+    <string name="detail_no_transcript">هذا الفيديو بدون كابشن</string>
+    <string name="import_done">تم استيراد القاعدة</string>
+    <string name="import_failed">فشل فتح الملف: %1$s</string>
+    <string name="import_invalid">الملف ليس قاعدة بيانات صالحة</string>
+</resources>
