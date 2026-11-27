@@ -622,12 +622,19 @@ class CaptionRepository(private val context: Context) {
     private var topicsCache: List<TopicItem>? = null
     private val channelFeedCache = LinkedHashMap<String, List<VideoItem>>()
 
-    fun channelFeed(channelId: String, kind: String = "all", limit: Int = 150): List<VideoItem> {
+    fun channelFeed(channelId: String, kind: String = "all", offset: Int = 0, limit: Int = 30): List<VideoItem> {
         val key = "$channelId|$kind|$limit"
-        channelFeedCache[key]?.let { return it }
-        if (channelFeedCache.size >= 4) channelFeedCache.clear()
-        val items = filtered(FilterState(channelIds = setOf(channelId), kind = kind), 0, limit)
-        channelFeedCache[key] = items
+        if (offset == 0) channelFeedCache[key]?.let { return it }
+        val clause = when (kind) {
+            "live" -> "v.channel_id=? AND v.is_live=1"
+            "short" -> "v.channel_id=? AND v.is_short=1"
+            else -> "v.channel_id=?"
+        }
+        val items = runVideos(clause, listOf(channelId), limit, offset)
+        if (offset == 0) {
+            if (channelFeedCache.size >= 4) channelFeedCache.clear()
+            channelFeedCache[key] = items
+        }
         return items
     }
 

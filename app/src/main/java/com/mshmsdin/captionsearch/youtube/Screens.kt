@@ -116,6 +116,7 @@ private fun isOnline(context: Context): Boolean {
 
 private const val HOME_PAGE = 25
 private const val SHORTS_PAGE = 30
+private const val CHANNEL_PAGE = 30
 
 @Composable
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
@@ -366,6 +367,9 @@ fun ChannelDetailView(
     var tab by remember { mutableStateOf("videos") }
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var videosLoading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var ended by remember { mutableStateOf(false) }
+    val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
     var playlists by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.PlaylistItem>>(emptyList()) }
     var topics by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.TopicItem>>(emptyList()) }
     LaunchedEffect(channelId, version) {
@@ -381,10 +385,40 @@ fun ChannelDetailView(
             else -> "all"
         }
         videosLoading = true
+        ended = false
         try {
-            videos = withContext(Dispatchers.IO) { repository.channelFeed(channelId, kind) }
+            val page = withContext(Dispatchers.IO) {
+                repository.channelFeed(channelId, kind, 0, CHANNEL_PAGE)
+            }
+            videos = page
+            ended = page.size < CHANNEL_PAGE
         } finally {
             videosLoading = false
+        }
+    }
+    LaunchedEffect(channelId, version, tab) {
+        if (tab == "playlists" || tab == "topics") return@LaunchedEffect
+        val kind = when (tab) {
+            "live" -> "live"
+            "shorts" -> "short"
+            else -> "all"
+        }
+        snapshotFlow {
+            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) to videos.size
+        }.distinctUntilChanged().collect { (last, size) ->
+            if (last < 0 || size == 0) return@collect
+            if (videosLoading || loadingMore || ended) return@collect
+            if (last < size - 4) return@collect
+            loadingMore = true
+            try {
+                val page = withContext(Dispatchers.IO) {
+                    repository.channelFeed(channelId, kind, videos.size, CHANNEL_PAGE)
+                }
+                if (page.isNotEmpty()) videos = videos + page
+                if (page.size < CHANNEL_PAGE) ended = true
+            } finally {
+                loadingMore = false
+            }
         }
     }
     Column(Modifier.fillMaxSize()) {
@@ -467,7 +501,7 @@ fun ChannelDetailView(
             else -> when {
                 videos.isEmpty() && videosLoading -> Box(Modifier.weight(1f))
                 videos.isEmpty() -> EmptyState("لا توجد مقاطع", Modifier.weight(1f))
-                else -> LazyColumn(Modifier.weight(1f)) {
+                else -> LazyColumn(Modifier.weight(1f), state = listState) {
                     items(count = videos.size) { i -> VideoCard(videos[i], style) { onOpen(videos[i]) } }
                 }
             }
