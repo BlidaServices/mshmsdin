@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -111,32 +112,38 @@ fun OnboardingScreen(
                 userScrollEnabled = !importing,
                 key = { it }
             ) { page ->
-                when (page) {
-                    0 -> OnboardContent(
-                        title = "ابحث في كلام الشيخ",
-                        body = "أكثر من مليوني كابشن من 10,794 مقطعًا، مفهرسة بالكلمة: تكتب «الصلاة» فتظهر كل اللحظات التي قيلت فيها، لا عناوين فقط.",
-                        note = "2,087,985 كابشن · 10,794 مقطع",
-                        scheme = scheme
-                    ) { SearchVisual(scheme) }
-                    1 -> OnboardContent(
-                        title = "سؤال وجواب",
-                        body = "آلاف الأسئلة مربوطًا بمكان إجابتها داخل المقطع: اختر السؤال فيقفز المشغّل إلى الثانية التي يبدأ فيها الجواب.",
-                        note = "102,484 مدخلًا مفهرسًا",
-                        scheme = scheme
-                    ) { QnaVisual(scheme) }
-                    2 -> OnboardContent(
-                        title = "الكابشن والفصول",
-                        body = "شغّل المقطع، تنقّل بين الفصول، واضغط أي سطر من الكابشن لينتقل الفيديو إلى تلك اللحظة. شارة CC تعني أن المقطع مفهرس.",
-                        note = null,
-                        scheme = scheme
-                    ) { PlayerVisual(scheme) }
-                    3 -> OnboardContent(
-                        title = "تصفح وخصّص، وبدون إنترنت",
-                        body = "الرئيسية وشورتس والمواضيع والقنوات الأربع، مع قوائمها ومواضيعها. من الإعدادات: حجم البطاقة وستة ألوان — وكل هذا بعد استيراد واحد.",
-                        note = "4 قنوات · 9,765 موضوعًا · 145 قائمة",
-                        scheme = scheme
-                    ) { BrowseVisual(channels, scheme) }
-                    else -> ImportPage(importing, importDone, onImport, scheme)
+                PageEntrance(active = pagerState.currentPage == page) {
+                    when (page) {
+                        0 -> OnboardContent(
+                            tag = "بدون إنترنت · بحث فوري",
+                            title = "ابحث في كلام الشيخ أينما كنت",
+                            body = "بعد استيراد واحد، يعمل التطبيق بالكامل دون اتصال: اكتب كلمة فتظهر كل اللحظات التي قيلت فيها، لا عناوين فقط.",
+                            note = "2,087,985 كابشن · 10,794 مقطع",
+                            scheme = scheme
+                        ) { SearchVisual(scheme) }
+                        1 -> OnboardContent(
+                            tag = "سؤال وجواب",
+                            title = "من السؤال إلى الجواب",
+                            body = "آلاف الأسئلة مربوطًا بمكان إجابتها داخل المقطع: اختر السؤال فيقفز المشغّل إلى الثانية التي يبدأ فيها الجواب.",
+                            note = "102,484 مدخلًا مفهرسًا",
+                            scheme = scheme
+                        ) { QnaVisual(scheme) }
+                        2 -> OnboardContent(
+                            tag = "مشغّل ذكي",
+                            title = "الكابشن والفصول",
+                            body = "شغّل المقطع، تنقّل بين الفصول، واضغط أي سطر من الكابشن لينتقل الفيديو إلى تلك اللحظة. شارة CC تعني أن المقطع مفهرس.",
+                            note = null,
+                            scheme = scheme
+                        ) { PlayerVisual(scheme) }
+                        3 -> OnboardContent(
+                            tag = "تصفح مخصّص",
+                            title = "كل المحتوى بين يديك",
+                            body = "الرئيسية وشورتس والمواضيع والقنوات الأربع، مع قوائمها ومواضيعها. ومن الإعدادات: حجم البطاقة وستة ألوان.",
+                            note = "4 قنوات · 9,765 موضوعًا · 145 قائمة",
+                            scheme = scheme
+                        ) { BrowseVisual(channels, scheme) }
+                        else -> ImportPage(importing, importDone, onImport, scheme)
+                    }
                 }
             }
             Spacer(Modifier.height(10.dp))
@@ -177,7 +184,23 @@ fun OnboardingScreen(
 }
 
 @Composable
+private fun PageEntrance(active: Boolean, content: @Composable () -> Unit) {
+    val reveal = remember { androidx.compose.animation.core.Animatable(if (active) 1f else 0f) }
+    LaunchedEffect(active) {
+        if (active) reveal.animateTo(1f, tween(520, easing = FastOutSlowInEasing))
+        else reveal.snapTo(0f)
+    }
+    Column(
+        Modifier.fillMaxSize().graphicsLayer(
+            alpha = reveal.value,
+            translationY = (1f - reveal.value) * 28
+        )
+    ) { content() }
+}
+
+@Composable
 private fun OnboardContent(
+    tag: String,
     title: String,
     body: String,
     note: String?,
@@ -190,7 +213,17 @@ private fun OnboardContent(
         verticalArrangement = Arrangement.Center
     ) {
         visual()
-        Spacer(Modifier.height(22.dp))
+        Spacer(Modifier.height(18.dp))
+        Surface(
+            shape = RoundedCornerShape(50),
+            color = scheme.primaryContainer,
+            modifier = Modifier.wrapContentWidth()
+        ) {
+            Text(tag, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                color = scheme.onPrimaryContainer,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 5.dp))
+        }
+        Spacer(Modifier.height(12.dp))
         Text(title, style = MaterialTheme.typography.headlineSmall,
             color = scheme.onSurface, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
