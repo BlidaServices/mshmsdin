@@ -114,9 +114,11 @@ private fun isOnline(context: Context): Boolean {
     return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
 
-private const val HOME_PAGE = 25
-private const val SHORTS_PAGE = 30
-private const val CHANNEL_PAGE = 30
+private const val HOME_PAGE = 10
+private const val SHORTS_PAGE = 10
+private const val CHANNEL_PAGE = 10
+private const val TOPICS_INITIAL = 20
+private const val TOPICS_PAGE = 10
 
 @Composable
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
@@ -282,10 +284,39 @@ fun ShortsView(repository: CaptionRepository, version: Long, onOpen: (VideoItem)
 @Composable
 fun TopicsView(repository: CaptionRepository, version: Long, onCategory: (FilterState, String) -> Unit) {
     var topics by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.TopicItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var ended by remember { mutableStateOf(false) }
+    val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(version) {
-        topics = withContext(Dispatchers.IO) { repository.topics(100000) }
+        loading = true
+        ended = false
+        try {
+            val page = withContext(Dispatchers.IO) { repository.topics(TOPICS_INITIAL) }
+            topics = page
+            ended = page.size < TOPICS_INITIAL
+        } finally {
+            loading = false
+        }
     }
-    LazyColumn(Modifier.fillMaxSize()) {
+    LaunchedEffect(version) {
+        snapshotFlow {
+            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) to topics.size
+        }.distinctUntilChanged().collect { (last, size) ->
+            if (last < 0 || size == 0) return@collect
+            if (loading || loadingMore || ended) return@collect
+            if (last < size - 4) return@collect
+            loadingMore = true
+            try {
+                val page = withContext(Dispatchers.IO) { repository.topics(size + TOPICS_PAGE) }
+                if (page.size > size) topics = page
+                ended = page.size <= size
+            } finally {
+                loadingMore = false
+            }
+        }
+    }
+    LazyColumn(Modifier.fillMaxSize(), state = listState) {
         item { Text("المواضيع (${topics.size})", style = MaterialTheme.typography.titleLarge,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)) }
         items(count = topics.size) { i ->
@@ -316,8 +347,37 @@ fun TopicResultsView(
     onOpen: (VideoItem) -> Unit
 ) {
     var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
+    var loading by remember { mutableStateOf(true) }
+    var loadingMore by remember { mutableStateOf(false) }
+    var ended by remember { mutableStateOf(false) }
+    val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
     LaunchedEffect(filter) {
-        videos = withContext(Dispatchers.IO) { repository.filtered(filter, 0, 150) }
+        loading = true
+        ended = false
+        try {
+            val page = withContext(Dispatchers.IO) { repository.filtered(filter, 0, HOME_PAGE) }
+            videos = page
+            ended = page.size < HOME_PAGE
+        } finally {
+            loading = false
+        }
+    }
+    LaunchedEffect(filter) {
+        snapshotFlow {
+            (listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1) to videos.size
+        }.distinctUntilChanged().collect { (last, size) ->
+            if (last < 0 || size == 0) return@collect
+            if (loading || loadingMore || ended) return@collect
+            if (last < size - 4) return@collect
+            loadingMore = true
+            try {
+                val page = withContext(Dispatchers.IO) { repository.filtered(filter, size, HOME_PAGE) }
+                if (page.isNotEmpty()) videos = videos + page
+                if (page.size < HOME_PAGE) ended = true
+            } finally {
+                loadingMore = false
+            }
+        }
     }
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -325,9 +385,12 @@ fun TopicResultsView(
                 Text(title, style = MaterialTheme.typography.titleMedium,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
-            if (videos.isEmpty()) EmptyState("لا توجد مقاطع")
-            else LazyColumn(Modifier.fillMaxSize()) {
-                items(count = videos.size) { i -> VideoCard(videos[i], style) { onOpen(videos[i]) } }
+            when {
+                videos.isEmpty() && loading -> Box(Modifier.weight(1f))
+                videos.isEmpty() -> EmptyState("لا توجد مقاطع", Modifier.weight(1f))
+                else -> LazyColumn(Modifier.weight(1f), state = listState) {
+                    items(count = videos.size) { i -> VideoCard(videos[i], style) { onOpen(videos[i]) } }
+                }
             }
         }
     }
