@@ -111,8 +111,13 @@ private fun CaptionAppRoot() {
         if (uri == null) return@rememberLauncherForActivityResult
         importing = true
         scope.launch {
-            val error = withContext(Dispatchers.IO) { repository.importFrom(uri) }
-            importing = false
+            val error = try {
+                withContext(Dispatchers.IO) { repository.importFrom(uri) }
+            } catch (t: Throwable) {
+                t.message ?: "فشل الاستيراد"
+            } finally {
+                importing = false
+            }
             checking = false
             isLoaded = repository.isLoaded
             if (error == null) {
@@ -122,6 +127,7 @@ private fun CaptionAppRoot() {
                 Toast.makeText(context, "تم", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
+                onboardingStep = 1
             }
         }
     }
