@@ -120,7 +120,7 @@ private const val HOME_PAGE = 10
 private const val SHORTS_PAGE = 10
 private const val CHANNEL_PAGE = 10
 private const val TOPICS_INITIAL = 20
-private const val TOPICS_PAGE = 10
+private const val TOPICS_PAGE = 20
 
 @Composable
 fun EmptyState(text: String, modifier: Modifier = Modifier) {
