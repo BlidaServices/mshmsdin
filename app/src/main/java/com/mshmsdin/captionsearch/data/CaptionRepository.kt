@@ -224,6 +224,7 @@ class CaptionRepository(private val context: Context) {
             hasChannelAvatar = columnExists(c, "channels", "avatar")
             topicsCache = null
             channelFeedCache.clear()
+            feedCache.clear()
             ftsSupported = probeFts(c)
             openError = null
             true
@@ -245,6 +246,7 @@ class CaptionRepository(private val context: Context) {
         ftsProbeError = null
         topicsCache = null
         channelFeedCache.clear()
+        feedCache.clear()
     }
 
     private fun tableExists(c: Connection, name: String): Boolean {
@@ -607,12 +609,31 @@ class CaptionRepository(private val context: Context) {
         return queryVideos(sql, args + listOf(limit, offset))
     }
 
-    fun home(offset: Int = 0, limit: Int = 40, includeShorts: Boolean = false): List<VideoItem> =
-        if (includeShorts) runVideos("", emptyList(), limit, offset)
-        else runVideos("v.is_short=0", emptyList(), limit, offset)
+    private val feedCache = LinkedHashMap<String, List<VideoItem>>()
+    private val cacheLock = Any()
 
-    fun shorts(offset: Int = 0, limit: Int = 40): List<VideoItem> =
-        runVideos("v.is_short=1", emptyList(), limit, offset)
+    fun home(offset: Int = 0, limit: Int = 40, includeShorts: Boolean = false): List<VideoItem> {
+        val key = "home|$includeShorts|$limit"
+        if (offset == 0) synchronized(cacheLock) { feedCache[key]?.let { return it } }
+        val items = if (includeShorts) runVideos("", emptyList(), limit, offset)
+        else runVideos("v.is_short=0", emptyList(), limit, offset)
+        if (offset == 0) synchronized(cacheLock) {
+            if (feedCache.size >= 8) feedCache.clear()
+            feedCache[key] = items
+        }
+        return items
+    }
+
+    fun shorts(offset: Int = 0, limit: Int = 40): List<VideoItem> {
+        val key = "shorts|$limit"
+        if (offset == 0) synchronized(cacheLock) { feedCache[key]?.let { return it } }
+        val items = runVideos("v.is_short=1", emptyList(), limit, offset)
+        if (offset == 0) synchronized(cacheLock) {
+            if (feedCache.size >= 8) feedCache.clear()
+            feedCache[key] = items
+        }
+        return items
+    }
 
     fun videoByRow(rowId: Long): VideoItem? {
         val list = runVideos("v.rowid = ?", listOf(rowId), 1, 0)
@@ -624,7 +645,7 @@ class CaptionRepository(private val context: Context) {
 
     fun channelFeed(channelId: String, kind: String = "all", offset: Int = 0, limit: Int = 30): List<VideoItem> {
         val key = "$channelId|$kind|$limit"
-        if (offset == 0) channelFeedCache[key]?.let { return it }
+        if (offset == 0) synchronized(cacheLock) { channelFeedCache[key]?.let { return it } }
         val clause = when (kind) {
             "live" -> "v.channel_id=? AND v.is_live=1"
             "short" -> "v.channel_id=? AND v.is_short=1"
@@ -632,7 +653,7 @@ class CaptionRepository(private val context: Context) {
         }
         val sql = videoSelect() + " WHERE $clause ORDER BY v.rowid ASC LIMIT ? OFFSET ?"
         val items = queryVideos(sql, listOf(channelId, limit, offset))
-        if (offset == 0) {
+        if (offset == 0) synchronized(cacheLock) {
             if (channelFeedCache.size >= 4) channelFeedCache.clear()
             channelFeedCache[key] = items
         }
@@ -705,9 +726,10 @@ class CaptionRepository(private val context: Context) {
         return runCatching {
             c.createStatement().use { s ->
                 s.executeQuery(
-                    "SELECT ch.channel_id,ch.title,COUNT(v.id),${if (hasChannelAvatar) "ch.avatar" else "NULL"} " +
-                        "FROM channels ch LEFT JOIN videos v ON v.channel_id=ch.channel_id " +
-                        "GROUP BY ch.channel_id ORDER BY COUNT(v.id) DESC"
+                    "SELECT ch.channel_id,ch.title," +
+                        "(SELECT COUNT(*) FROM videos v WHERE v.channel_id=ch.channel_id)," +
+                        "${if (hasChannelAvatar) "ch.avatar" else "NULL"} " +
+                        "FROM channels ch ORDER BY (SELECT COUNT(*) FROM videos v WHERE v.channel_id=ch.channel_id) DESC"
                 ).use { rs ->
                     buildList {
                         while (rs.next()) {

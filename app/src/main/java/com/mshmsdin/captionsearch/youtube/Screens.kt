@@ -435,10 +435,19 @@ fun ChannelDetailView(
     val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
     var playlists by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.PlaylistItem>>(emptyList()) }
     var topics by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.TopicItem>>(emptyList()) }
+    var playlistsLoading by remember { mutableStateOf(true) }
+    var topicsLoading by remember { mutableStateOf(true) }
     LaunchedEffect(channelId, version) {
-        info = withContext(Dispatchers.IO) { repository.channelInfo(channelId) }
-        playlists = withContext(Dispatchers.IO) { repository.channelPlaylists(channelId) }
-        topics = withContext(Dispatchers.IO) { repository.channelTopics(channelId) }
+        playlistsLoading = true
+        topicsLoading = true
+        try {
+            info = withContext(Dispatchers.IO) { repository.channelInfo(channelId) }
+            playlists = withContext(Dispatchers.IO) { repository.channelPlaylists(channelId) }
+            topics = withContext(Dispatchers.IO) { repository.channelTopics(channelId) }
+        } finally {
+            playlistsLoading = false
+            topicsLoading = false
+        }
     }
     LaunchedEffect(channelId, version, tab) {
         if (tab == "playlists" || tab == "topics") return@LaunchedEffect
@@ -449,6 +458,8 @@ fun ChannelDetailView(
         }
         videosLoading = true
         ended = false
+        videos = emptyList()
+        listState.scrollToItem(0)
         try {
             val page = withContext(Dispatchers.IO) {
                 repository.channelFeed(channelId, kind, 0, CHANNEL_PAGE)
@@ -516,7 +527,7 @@ fun ChannelDetailView(
         }
         when (tab) {
             "playlists" -> LazyColumn(Modifier.weight(1f)) {
-                if (playlists.isEmpty()) item {
+                if (playlists.isEmpty() && !playlistsLoading) item {
                     Text("لا توجد قوائم", fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(24.dp))
@@ -539,7 +550,7 @@ fun ChannelDetailView(
                 }
             }
             "topics" -> LazyColumn(Modifier.weight(1f)) {
-                if (topics.isEmpty()) item {
+                if (topics.isEmpty() && !topicsLoading) item {
                     Text("لا توجد مواضيع", fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(24.dp))
