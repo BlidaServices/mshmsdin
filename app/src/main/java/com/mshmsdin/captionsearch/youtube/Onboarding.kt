@@ -2,6 +2,7 @@ package com.mshmsdin.captionsearch.youtube
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -10,6 +11,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,7 +35,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -50,6 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
@@ -61,6 +65,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mshmsdin.captionsearch.data.CaptionRepository
@@ -430,18 +435,52 @@ private fun ImportPage(
 }
 
 @Composable
+private fun PlayLinearLoader(
+    color: Color,
+    trackColor: Color,
+    modifier: Modifier = Modifier,
+    barHeight: Dp = 7.dp
+) {
+    val t = rememberInfiniteTransition(label = "playLoader")
+    val phase by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart),
+        label = "phase"
+    )
+    Canvas(modifier.fillMaxWidth().height(barHeight)) {
+        val w = size.width
+        val h = size.height
+        val r = CornerRadius(h / 2f)
+        drawRoundRect(color = trackColor, cornerRadius = r, size = Size(w, h))
+        val ease = FastOutSlowInEasing
+        val head = ease.transform(phase)
+        var tail = ease.transform((phase - 0.25f + 1f) % 1f)
+        if (tail > head) tail -= 1f
+        val segW = (head - tail).coerceIn(0.08f, 0.62f) * w
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(head * w - segW, 0f),
+            size = Size(segW, h),
+            cornerRadius = r
+        )
+    }
+}
+
+@Composable
 private fun ImportBusyContent(scheme: androidx.compose.material3.ColorScheme) {
-    val t = rememberInfiniteTransition(label = "import")
-    val pulse by t.animateFloat(
-        initialValue = 0.94f, targetValue = 1.06f,
-        animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "pulse"
-    )
-    CircularProgressIndicator(
-        modifier = Modifier.size(96.dp).graphicsLayer { scaleX = pulse; scaleY = pulse },
-        color = scheme.primary,
-        trackColor = scheme.primary.copy(alpha = 0.15f),
-        strokeWidth = 7.dp,
-        strokeCap = androidx.compose.ui.graphics.StrokeCap.Round
-    )
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Icon(YouTubeIcons.VideoFilled, null, tint = scheme.primary.copy(alpha = 0.9f),
+            modifier = Modifier.size(56.dp))
+        Spacer(Modifier.height(28.dp))
+        PlayLinearLoader(
+            color = scheme.primary,
+            trackColor = scheme.primary.copy(alpha = 0.18f),
+            modifier = Modifier.width(220.dp)
+        )
+    }
 }
