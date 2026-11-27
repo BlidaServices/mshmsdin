@@ -37,6 +37,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -79,6 +80,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
@@ -426,23 +428,34 @@ fun ChannelsView(repository: CaptionRepository, version: Long, onOpen: (String) 
     }
 }
 
+class ChannelUiState(val id: String) {
+    var tab by mutableStateOf("videos")
+    var kind by mutableStateOf("")
+    var videos by mutableStateOf<List<VideoItem>>(emptyList())
+    var ended by mutableStateOf(false)
+    val videosList = androidx.compose.foundation.lazy.LazyListState()
+    val playlistsList = androidx.compose.foundation.lazy.LazyListState()
+    val topicsList = androidx.compose.foundation.lazy.LazyListState()
+}
+
 @Composable
 fun ChannelDetailView(
     repository: CaptionRepository,
-    channelId: String,
+    ui: ChannelUiState,
     version: Long,
     style: String,
     onOpen: (VideoItem) -> Unit,
     onListResult: (FilterState, String) -> Unit,
     onSearch: () -> Unit
 ) {
+    val channelId = ui.id
+    val tab = ui.tab
+    val videos = ui.videos
+    val ended = ui.ended
+    val listState = ui.videosList
     var info by remember(channelId) { mutableStateOf<ChannelInfo?>(null) }
-    var tab by remember { mutableStateOf("videos") }
-    var videos by remember { mutableStateOf<List<VideoItem>>(emptyList()) }
     var videosLoading by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
-    var ended by remember { mutableStateOf(false) }
-    val listState = remember(channelId, tab) { androidx.compose.foundation.lazy.LazyListState() }
     var playlists by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.PlaylistItem>>(emptyList()) }
     var topics by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.TopicItem>>(emptyList()) }
     var playlistsLoading by remember(channelId) { mutableStateOf(true) }
@@ -450,12 +463,14 @@ fun ChannelDetailView(
     LaunchedEffect(channelId, version) {
         info = withContext(Dispatchers.IO) { repository.channelInfo(channelId) }
     }
-    LaunchedEffect(channelId, version) {
+    LaunchedEffect(channelId, version, tab) {
+        if (tab != "playlists" || playlists.isNotEmpty()) return@LaunchedEffect
         playlistsLoading = true
         try { playlists = withContext(Dispatchers.IO) { repository.channelPlaylists(channelId) } }
         finally { playlistsLoading = false }
     }
-    LaunchedEffect(channelId, version) {
+    LaunchedEffect(channelId, version, tab) {
+        if (tab != "topics" || topics.isNotEmpty()) return@LaunchedEffect
         topicsLoading = true
         try { topics = withContext(Dispatchers.IO) { repository.channelTopics(channelId) } }
         finally { topicsLoading = false }
@@ -467,15 +482,20 @@ fun ChannelDetailView(
             "shorts" -> "short"
             else -> "all"
         }
+        if (ui.kind == kind && ui.videos.isNotEmpty()) {
+            videosLoading = false
+            return@LaunchedEffect
+        }
         videosLoading = true
-        ended = false
-        videos = emptyList()
+        ui.ended = false
+        ui.videos = emptyList()
+        ui.kind = kind
         try {
             val page = withContext(Dispatchers.IO) {
                 repository.channelFeed(channelId, kind, 0, CHANNEL_PAGE)
             }
-            videos = page
-            ended = page.size < CHANNEL_PAGE
+            ui.videos = page
+            ui.ended = page.size < CHANNEL_PAGE
         } finally {
             videosLoading = false
         }
@@ -498,8 +518,8 @@ fun ChannelDetailView(
                 val page = withContext(Dispatchers.IO) {
                     repository.channelFeed(channelId, kind, videos.size, CHANNEL_PAGE)
                 }
-                if (page.isNotEmpty()) videos = videos + page
-                if (page.size < CHANNEL_PAGE) ended = true
+                if (page.isNotEmpty()) ui.videos = ui.videos + page
+                if (page.size < CHANNEL_PAGE) ui.ended = true
             } finally {
                 loadingMore = false
             }
@@ -525,7 +545,7 @@ fun ChannelDetailView(
         Row(Modifier.fillMaxWidth()) {
             tabs.forEach { (v, l) ->
                 val selected = tab == v
-                Column(Modifier.weight(1f).clickable { tab = v },
+                Column(Modifier.weight(1f).clickable { ui.tab = v },
                     horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(l, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                         color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -536,7 +556,7 @@ fun ChannelDetailView(
             }
         }
         when (tab) {
-            "playlists" -> LazyColumn(Modifier.weight(1f)) {
+            "playlists" -> LazyColumn(Modifier.weight(1f), state = ui.playlistsList) {
                 if (playlists.isEmpty() && !playlistsLoading) item {
                     Text("لا توجد قوائم", fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -547,7 +567,8 @@ fun ChannelDetailView(
                     Row(Modifier.fillMaxWidth()
                         .clickable { onListResult(FilterState(playlistId = item.id, channelIds = setOf(channelId)), item.title) }
                         .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Thumbnail(item.cover, Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)))
+                        LazyCover("pl-${item.id}", { repository.playlistCover(item.id) },
+                            Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(item.title, fontWeight = FontWeight.SemiBold, maxLines = 1,
@@ -559,7 +580,7 @@ fun ChannelDetailView(
                     HorizontalDivider()
                 }
             }
-            "topics" -> LazyColumn(Modifier.weight(1f)) {
+            "topics" -> LazyColumn(Modifier.weight(1f), state = ui.topicsList) {
                 if (topics.isEmpty() && !topicsLoading) item {
                     Text("لا توجد مواضيع", fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -570,7 +591,8 @@ fun ChannelDetailView(
                     Row(Modifier.fillMaxWidth()
                         .clickable { onListResult(FilterState(topicId = item.id, channelIds = setOf(channelId)), item.name) }
                         .padding(horizontal = 14.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Thumbnail(item.cover, Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)))
+                        LazyCover("topic-${item.id}", { repository.topicCover(item.id) },
+                            Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(8.dp)))
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
                             Text(item.name, fontWeight = FontWeight.SemiBold, maxLines = 1,
@@ -763,6 +785,7 @@ fun VideoView(
     var chapters by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.ChapterItem>>(emptyList()) }
     var cues by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.Cue>>(emptyList()) }
     var webView by remember { mutableStateOf<WebView?>(null) }
+    var playerReady by remember(item.id) { mutableStateOf(false) }
     var detailTab by remember(item.id) { mutableStateOf("desc") }
 
     LaunchedEffect(highlight) {
@@ -790,12 +813,13 @@ fun VideoView(
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clipToBounds().background(Color.Black)) {
                 if (online) {
                     key(item.id) {
                         AndroidView(
                             factory = { ctx ->
                                 WebView(ctx).apply {
+                                    setBackgroundColor(android.graphics.Color.BLACK)
                                     settings.javaScriptEnabled = true
                                     settings.domStorageEnabled = true
                                     settings.mediaPlaybackRequiresUserGesture = false
@@ -828,18 +852,34 @@ fun VideoView(
                                         fun onError(code: Int) {
                                             Log.e("YTWeb", "player error=$code")
                                         }
+                                        @JavascriptInterface
+                                        fun onReady() {
+                                            post { playerReady = true }
+                                        }
                                     }, "AndroidError")
                                     loadUrl(playerUrl)
                                     webView = this
                                 }
                             },
-                            modifier = Modifier.fillMaxSize(),
+                            modifier = Modifier.fillMaxSize().clipToBounds(),
                             onRelease = { wv ->
+                                if (webView === wv) webView = null
                                 wv.loadUrl("about:blank")
                                 wv.removeAllViews()
                                 wv.destroy()
                             }
                         )
+                        if (!playerReady) {
+                            Box(Modifier.fillMaxSize().background(Color.Black)) {
+                                Thumbnail(item.thumb, Modifier.fillMaxSize())
+                                Box(Modifier.align(Alignment.Center).size(56.dp)
+                                    .background(Color.Black.copy(alpha = 0.55f), CircleShape),
+                                    contentAlignment = Alignment.Center) {
+                                    Icon(Icons.Default.PlayArrow, null, tint = Color.White,
+                                        modifier = Modifier.size(36.dp))
+                                }
+                            }
+                        }
                         DisposableEffect(item.id) {
                             onDispose { webView?.onPause() }
                         }

@@ -94,6 +94,14 @@ fun Thumbnail(bytes: ByteArray?, modifier: Modifier) {
 }
 
 @Composable
+fun LazyCover(key: String, load: () -> ByteArray?, modifier: Modifier) {
+    val bytes by produceState<ByteArray?>(initialValue = null, key1 = key) {
+        value = withContext(Dispatchers.IO) { load() }
+    }
+    Thumbnail(bytes, modifier)
+}
+
+@Composable
 fun ChannelAvatar(bytes: ByteArray?, size: Int = 36, onClick: (() -> Unit)? = null) {
     val modifier = Modifier
         .size(size.dp)

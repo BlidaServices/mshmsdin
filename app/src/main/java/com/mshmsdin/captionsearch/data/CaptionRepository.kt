@@ -222,6 +222,13 @@ class CaptionRepository(private val context: Context) {
             hasCues = tableExists(c, "cues")
             hasThumbImage = columnExists(c, "videos", "thumb_image")
             hasChannelAvatar = columnExists(c, "channels", "avatar")
+            runCatching {
+                c.createStatement().use { s ->
+                    s.execute("PRAGMA mmap_size=536870912")
+                    s.execute("PRAGMA cache_size=-65536")
+                    s.execute("PRAGMA temp_store=MEMORY")
+                }
+            }
             topicsCache = null
             channelFeedCache.clear()
             feedCache.clear()
@@ -923,6 +930,34 @@ class CaptionRepository(private val context: Context) {
         }.getOrDefault(emptyList())
     }
 
+    fun playlistCover(playlistId: String): ByteArray? {
+        val c = conn ?: return null
+        if (!hasThumbImage) return null
+        return runCatching {
+            c.prepareStatement(
+                "SELECT v.thumb_image FROM playlist_videos pv JOIN videos v ON v.id=pv.video_id " +
+                    "WHERE pv.playlist_id=? AND v.thumb_image IS NOT NULL ORDER BY pv.position LIMIT 1"
+            ).use { ps ->
+                ps.setString(1, playlistId)
+                ps.executeQuery().use { rs -> if (rs.next()) rs.getBytes(1) else null }
+            }
+        }.getOrNull()
+    }
+
+    fun topicCover(topicId: Int): ByteArray? {
+        val c = conn ?: return null
+        if (!hasThumbImage) return null
+        return runCatching {
+            c.prepareStatement(
+                "SELECT v.thumb_image FROM video_topics vt JOIN videos v ON v.id=vt.video_id " +
+                    "WHERE vt.topic_id=? AND v.thumb_image IS NOT NULL ORDER BY v.rowid LIMIT 1"
+            ).use { ps ->
+                ps.setInt(1, topicId)
+                ps.executeQuery().use { rs -> if (rs.next()) rs.getBytes(1) else null }
+            }
+        }.getOrNull()
+    }
+
     fun searchHits(query: String, channelId: String? = null, limit: Int = 80): List<SearchHit> {
         val c = conn ?: return emptyList()
         if (query.isBlank()) return emptyList()
@@ -937,7 +972,7 @@ class CaptionRepository(private val context: Context) {
             val args = buildList {
                 add(match)
                 if (channelId != null) add(channelId)
-                add((limit * 3).toString())
+                add((limit * 8).toString())
             }.toTypedArray()
             val rows = query(c, sql, args) { rs ->
                 buildList {
@@ -983,45 +1018,15 @@ class CaptionRepository(private val context: Context) {
             }
         }
 
-        if (ftsSupported) {
-            val first = runCatching { run(toMatch(query)) }
-            if (first.isSuccess) return first.getOrThrow()
-            val sanitized = Regex("[\\p{L}\\p{N}]+").findAll(query).joinToString(" ") { "\"$it\"" }
-            if (sanitized.isNotBlank()) {
-                val second = runCatching { run(sanitized) }
-                if (second.isSuccess) return second.getOrThrow()
-            }
-        }
-
-        val like = "%${query.trim()}%"
-        val sql = "SELECT c.video_rowid,c.video_id,c.start_time,c.text,v.title,ch.title " +
-            "FROM cues c JOIN videos v ON v.rowid=c.video_rowid " +
-            "LEFT JOIN channels ch ON ch.channel_id=v.channel_id " +
-            "WHERE c.text LIKE ?" + (if (channelId == null) "" else " AND v.channel_id=?") +
-            " ORDER BY v.date DESC,v.time DESC,c.rowid LIMIT ?"
-        return runCatching {
-            val args = buildList {
-                add(like)
-                if (channelId != null) add(channelId)
-                add(limit.toString())
-            }.toTypedArray()
-            query(c, sql, args) { rs ->
-                buildList {
-                    while (rs.next()) {
-                        add(SearchHit(
-                            videoRowId = rs.getLong(1),
-                            videoId = rs.getString(2) ?: "",
-                            start = rs.getString(3) ?: "",
-                            text = rs.getString(4) ?: "",
-                            title = rs.getString(5) ?: "",
-                            channel = rs.getString(6) ?: "",
-                            thumb = null,
-                            avatar = null
-                        ))
-                    }
-                }
-            }
-        }.getOrDefault(emptyList())
+        if (!ftsSupported) return emptyList()
+        val match = toMatch(query)
+        if (match.isBlank()) return emptyList()
+        val first = runCatching { run(match) }
+        if (first.isSuccess) return first.getOrThrow()
+        val sanitized = Regex("[\\p{L}\\p{N}]+").findAll(query)
+            .joinToString(" AND ") { "\"$it\"*" }
+        if (sanitized.isBlank()) return emptyList()
+        return runCatching { run(sanitized) }.getOrDefault(emptyList())
     }
 
     fun filtered(f: FilterState, offset: Int = 0, limit: Int = 40): List<VideoItem> {
@@ -1088,12 +1093,17 @@ class CaptionRepository(private val context: Context) {
         }
 
         fun toMatch(query: String): String {
-            return query.trim()
-                .split(Regex("\\s+"))
-                .filter { it.isNotEmpty() }
-                .joinToString(" ") { token ->
-                    "$token*"
-                }
+            val clitics = listOf("", "ال", "و", "وال", "ب", "بال", "ل", "لل", "ف", "ك", "ت")
+            fun clean(t: String) = t
+                .replace(Regex("[\\u064B-\\u065F\\u0670\\u06D6-\\u06ED]"), "")
+                .replace(Regex("[^\\p{L}\\p{N}]"), "")
+            val tokens = query.trim().split(Regex("\\s+")).map(::clean).filter { it.isNotEmpty() }
+            if (tokens.isEmpty()) return ""
+            val last = tokens.last()
+            val lastClause = (if (tokens.size == 1) clitics.map { "$it$last" } else listOf(last))
+                .joinToString(" OR ") { "\"$it\"*" }
+            val head = tokens.dropLast(1).map { "\"$it\"*" }
+            return (head + "($lastClause)").joinToString(" AND ")
         }
     }
 }

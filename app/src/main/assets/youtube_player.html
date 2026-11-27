@@ -24,6 +24,7 @@ window.seekTo = function(sec) {
 window.addEventListener('message', function(e) {
   try {
     var d = JSON.parse(e.data);
+    if (d.event === 'onReady' && window.AndroidError) window.AndroidError.onReady();
     if (d.event === 'error' && window.AndroidError) window.AndroidError.onError(d.data);
   } catch (_) {}
 });

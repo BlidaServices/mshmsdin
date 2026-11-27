@@ -55,6 +55,7 @@ import com.mshmsdin.captionsearch.data.YouTubeIcons
 import com.mshmsdin.captionsearch.ui.theme.CaptionSearchTheme
 import com.mshmsdin.captionsearch.youtube.ChannelDetailView
 import com.mshmsdin.captionsearch.youtube.ChannelsView
+import com.mshmsdin.captionsearch.youtube.ChannelUiState
 import com.mshmsdin.captionsearch.youtube.HomeView
 import com.mshmsdin.captionsearch.youtube.SearchView
 import com.mshmsdin.captionsearch.youtube.SettingsSheet
@@ -71,6 +72,7 @@ import kotlinx.coroutines.withContext
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(0xFF000000.toInt()))
         setContent { CaptionAppRoot() }
     }
 }
@@ -93,7 +95,7 @@ private fun CaptionAppRoot() {
     var listResult by remember { mutableStateOf<Pair<FilterState, String>?>(null) }
     var searchChannel by remember { mutableStateOf<String?>(null) }
     var selected by remember { mutableStateOf<VideoTarget?>(null) }
-    var channel by remember { mutableStateOf<String?>(null) }
+    var channelUi by remember { mutableStateOf<ChannelUiState?>(null) }
     var searching by remember { mutableStateOf(false) }
     var searchFocus by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
@@ -170,15 +172,15 @@ private fun CaptionAppRoot() {
             return@CaptionSearchTheme
         }
 
-        val currentChannel = channel
+        val currentChannel = channelUi
         if (currentChannel != null) {
-            BackHandler { channel = null }
+            BackHandler { channelUi = null }
             Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize().safeDrawingPadding()) {
                 ChannelDetailView(repository, currentChannel, version, style,
                     onOpen = { selected = VideoTarget(it, 0) },
                     onListResult = { filter, title -> listResult = filter to title },
                     onSearch = {
-                        searchChannel = currentChannel
+                        searchChannel = currentChannel.id
                         query = ""
                         searchFocus = true
                         searching = true
@@ -234,7 +236,7 @@ private fun CaptionAppRoot() {
                         filters = filter
                         listResult = filter to label
                     }
-                    3 -> ChannelsView(repository, version) { channel = it }
+                    3 -> ChannelsView(repository, version) { channelUi = ChannelUiState(it) }
                 }
             }
         }
