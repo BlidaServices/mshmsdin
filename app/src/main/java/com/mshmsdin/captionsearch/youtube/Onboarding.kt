@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -54,6 +53,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -76,32 +76,66 @@ import kotlinx.coroutines.withContext
 private const val ONBOARD_PAGES = 5
 private const val IMPORT_PAGE = ONBOARD_PAGES - 1
 
-private data class ChannelTeaser(val title: String, val desc: String, val iconRes: Int, val avatar: ByteArray? = null)
-
-private val fallbackTeasers = listOf(
-    ChannelTeaser("محمد بن شمس الدين", "الدروس والمحاضرات", ChannelArt.iconFor("محمد بن شمس الدين")),
-    ChannelTeaser("الردود العلمية", "ردود على الشبهات", ChannelArt.iconFor("الردود العلمية")),
-    ChannelTeaser("كشف التلبيس", "تفنيد الأباطيل", ChannelArt.iconFor("كشف التلبيس")),
-    ChannelTeaser("بثوث محمد بن شمس الدين", "اللقاءات المباشرة", ChannelArt.iconFor("بثوث محمد بن شمس الدين"))
+private data class DemoResult(
+    val title: String,
+    val meta: String,
+    val coverRes: Int? = null,
+    val avatar: ByteArray? = null,
+    val icon: ImageVector? = null
 )
 
-private data class DemoStep(val query: String, val headline: String, val results: List<Pair<String, String>>)
+private data class DemoStep(val query: String, val headline: String, val results: List<DemoResult>)
 
-private val searchDemo = DemoStep(
-    "الصلاة", "ابحث بدون إنترنت",
-    listOf(
-        "فأول ما يجب على المسلم تعلمه الصلاة" to "الشيخ · 00:04:12",
-        "والصلاة نور، وهي عمود الدين" to "الشيخ · 01:12:45"
-    )
-)
-
-@Composable
-private fun FinishScene(active: Boolean, delayMs: Long, onDone: () -> Unit) {
-    LaunchedEffect(active) {
-        if (!active) return@LaunchedEffect
-        delay(delayMs)
-        onDone()
+private fun buildDemos(channels: List<ChannelItem>): List<DemoStep> {
+    val ch = { name: String ->
+        channels.firstOrNull { it.title.contains(name) }?.avatar
     }
+    return listOf(
+        DemoStep(
+            "الصلاة", "ابحث بدون إنترنت",
+            listOf(
+                DemoResult("فأول ما يجب على المسلم تعلمه الصلاة", "الشيخ · 00:04:12",
+                    coverRes = ChannelArt.covers[0]),
+                DemoResult("والصلاة نور، وهي عمود الدين", "الشيخ · 01:12:45",
+                    coverRes = ChannelArt.covers[2])
+            )
+        ),
+        DemoStep(
+            "النووي", "ابحث داخل الكابشن",
+            listOf(
+                DemoResult("قال الإمام النووي رحمه الله في شرحه", "كابشن · 00:12:04",
+                    coverRes = ChannelArt.covers[1]),
+                DemoResult("وكذلك ذكر النووي أن السنة هي الحكم", "كابشن · 00:27:31",
+                    coverRes = ChannelArt.covers[3])
+            )
+        ),
+        DemoStep(
+            "القوائم", "قوائم ومواضيع منظمة",
+            listOf(
+                DemoResult("قائمة دروس التوحيد", "12 مقطعًا · قائمة",
+                    coverRes = ChannelArt.covers[2]),
+                DemoResult("قائمة الردود العلمية", "8 مقاطع · قائمة",
+                    coverRes = ChannelArt.covers[4]),
+                DemoResult("موضوع الصلاة", "1,204 مقطع · موضوع",
+                    coverRes = ChannelArt.covers[0]),
+                DemoResult("موضوع العقيدة", "986 مقطع · موضوع",
+                    coverRes = ChannelArt.covers[5])
+            )
+        ),
+        DemoStep(
+            "القنوات", "قنوات الشيخ",
+            listOf(
+                DemoResult("محمد بن شمس الدين", "5,021 مقطع",
+                    avatar = ch("شمس الدين"), icon = YouTubeIcons.HomeFilled),
+                DemoResult("الردود العلمية", "1,617 مقطع",
+                    avatar = ch("الردود"), icon = YouTubeIcons.VideoFilled),
+                DemoResult("كشف التلبيس", "369 مقطع",
+                    avatar = ch("التلبيس"), icon = YouTubeIcons.TopicsFilled),
+                DemoResult("بثوث محمد بن شمس الدين", "3,787 مقطع",
+                    avatar = ch("بثوث"), icon = YouTubeIcons.LiveFilled)
+            )
+        )
+    )
 }
 
 @Composable
@@ -115,6 +149,7 @@ fun OnboardingScreen(
 ) {
     var channels by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
     LaunchedEffect(Unit) { channels = withContext(Dispatchers.IO) { repository.channels() } }
+    val demos = remember(channels) { buildDemos(channels) }
     val scheme = MaterialTheme.colorScheme
     val scope = rememberCoroutineScope()
     val pagerState = rememberPagerState(
@@ -141,17 +176,11 @@ fun OnboardingScreen(
                 var sceneDone by remember { mutableStateOf(false) }
                 LaunchedEffect(active) { if (!active) sceneDone = false }
                 when (page) {
-                    0 -> PageScaffold(active, searchDemo.headline, sceneDone, scheme) {
-                        TypingDemo(active, searchDemo, scheme, {}) { sceneDone = true }
-                    }
-                    1 -> PageScaffold(active, "الكابشن الكامل لكل مقطع", sceneDone, scheme) {
-                        CaptionScene(active, scheme) { sceneDone = true }
-                    }
-                    2 -> PageScaffold(active, "قوائم ومواضيع منظمة", sceneDone, scheme) {
-                        ListsScene(active, scheme) { sceneDone = true }
-                    }
-                    3 -> PageScaffold(active, "قنوات الشيخ", sceneDone, scheme) {
-                        ChannelsScene(active, channels, scheme) { sceneDone = true }
+                    in 0 until 4 -> {
+                        val demo = demos[page]
+                        PageScaffold(active, demo.headline, sceneDone, scheme) {
+                            TypingDemo(active, demo, scheme) { sceneDone = true }
+                        }
                     }
                     else -> ImportPage(importing, importDone, onImport, scheme)
                 }
@@ -221,24 +250,18 @@ private fun AnimatedHeadline(text: String, scheme: androidx.compose.material3.Co
             shape = RoundedCornerShape(26.dp),
             modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = 0.6f + 0.4f * a.value }
         ) {
-            Text(
-                text, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+            Text(text, fontSize = 24.sp, fontWeight = FontWeight.Bold,
                 color = scheme.onPrimaryContainer, textAlign = TextAlign.Center,
                 modifier = Modifier.padding(vertical = 10.dp).graphicsLayer {
                     alpha = a.value
                     translationY = (1f - a.value) * 16
-                }
-            )
+                })
         }
     }
 }
 
 @Composable
-private fun RevealItem(
-    active: Boolean,
-    index: Int,
-    content: @Composable () -> Unit
-) {
+private fun RevealItem(active: Boolean, index: Int, content: @Composable () -> Unit) {
     val v = remember { Animatable(0f) }
     LaunchedEffect(active) {
         if (!active) {
@@ -263,7 +286,6 @@ private fun TypingDemo(
     active: Boolean,
     demo: DemoStep,
     scheme: androidx.compose.material3.ColorScheme,
-    heroExtra: @Composable () -> Unit,
     onDone: () -> Unit
 ) {
     var typed by remember { mutableStateOf(0) }
@@ -282,7 +304,7 @@ private fun TypingDemo(
     }
     LaunchedEffect(done) {
         if (done) {
-            delay(1100)
+            delay(1200)
             onDone()
         }
     }
@@ -305,12 +327,10 @@ private fun TypingDemo(
             }
         }
         Spacer(Modifier.height(14.dp))
-        heroExtra()
-        Spacer(Modifier.height(12.dp))
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-            demo.results.forEachIndexed { i, (caption, meta) ->
+            demo.results.forEachIndexed { i, result ->
                 RevealItem(active = done, index = i) {
-                    ResultCard(caption, meta, demo.query, scheme)
+                    DemoResultCard(result, demo.query, scheme)
                 }
             }
         }
@@ -318,173 +338,42 @@ private fun TypingDemo(
 }
 
 @Composable
-private fun ResultCard(
-    text: String, meta: String, word: String,
+private fun DemoResultCard(
+    result: DemoResult,
+    word: String,
     scheme: androidx.compose.material3.ColorScheme
 ) {
-    Surface(shape = RoundedCornerShape(18.dp), color = scheme.surfaceContainerLow,
+    Surface(shape = RoundedCornerShape(16.dp), color = scheme.surfaceContainerLow,
         modifier = Modifier.fillMaxWidth()) {
-        Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-            Image(painterResource(ChannelArt.covers[0]), null, contentScale = ContentScale.Crop,
-                modifier = Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(12.dp)))
+        Row(Modifier.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+            if (result.avatar != null) {
+                ChannelAvatar(result.avatar, 52)
+            } else if (result.coverRes != null) {
+                Image(painterResource(result.coverRes), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(116.dp, 66.dp).clip(RoundedCornerShape(11.dp)))
+            } else if (result.icon != null) {
+                Box(Modifier.size(52.dp).background(scheme.primaryContainer, CircleShape),
+                    Alignment.Center) {
+                    Icon(result.icon, null, tint = scheme.primary,
+                        modifier = Modifier.size(28.dp))
+                }
+            }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                val i = text.indexOf(word)
-                val annotated = if (i < 0) AnnotatedString(text) else buildAnnotatedString {
-                    append(text.substring(0, i))
+                val i = result.title.indexOf(word)
+                val annotated = if (i < 0) AnnotatedString(result.title) else buildAnnotatedString {
+                    append(result.title.substring(0, i))
                     withStyle(SpanStyle(color = scheme.onPrimaryContainer,
                         background = scheme.primaryContainer, fontWeight = FontWeight.Bold)) {
                         append(word)
                     }
-                    append(text.substring(i + word.length))
+                    append(result.title.substring(i + word.length))
                 }
-                Text(annotated, fontSize = 14.sp, color = scheme.onSurface,
+                Text(annotated, fontSize = 13.sp, color = scheme.onSurface,
                     maxLines = 2, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.height(5.dp))
-                Text(meta, fontSize = 11.sp, color = scheme.onSurfaceVariant, maxLines = 1)
+                Text(result.meta, fontSize = 11.sp, color = scheme.onSurfaceVariant, maxLines = 1)
             }
-        }
-    }
-}
-
-@Composable
-private fun CaptionScene(
-    active: Boolean,
-    scheme: androidx.compose.material3.ColorScheme,
-    onDone: () -> Unit
-) {
-    FinishScene(active, 1500, onDone)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        RevealItem(active, 0) {
-            Surface(shape = RoundedCornerShape(16.dp), color = scheme.surfaceContainerHigh,
-                modifier = Modifier.fillMaxWidth()) {
-                Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Image(painterResource(ChannelArt.covers[1]), null, contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(128.dp, 72.dp).clip(RoundedCornerShape(10.dp)))
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("مقطع الصلاة", fontSize = 17.sp, fontWeight = FontWeight.Bold,
-                            color = scheme.onSurface, maxLines = 1)
-                        Spacer(Modifier.height(5.dp))
-                        Text("محمد بن شمس الدين · 04:12", fontSize = 12.sp,
-                            color = scheme.onSurfaceVariant, maxLines = 1)
-                    }
-                }
-            }
-        }
-        val cues = listOf(
-            "00:00:04" to "الحمد لله والصلاة والسلام على رسول الله",
-            "00:00:18" to "أما بعد، فإن أول ما يجب تعلمه الصلاة",
-            "00:00:36" to "والصلاة عمود الدين، من تركها فقد خسر"
-        )
-        cues.forEachIndexed { i, (t, s) ->
-            RevealItem(active, i + 1) {
-                Surface(shape = RoundedCornerShape(12.dp),
-                    color = if (i == 1) scheme.primaryContainer else scheme.surfaceContainerLow,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(horizontal = 12.dp, vertical = 11.dp)) {
-                        Text(t, fontSize = 12.sp,
-                            color = if (i == 1) scheme.onPrimaryContainer else scheme.primary,
-                            modifier = Modifier.width(62.dp))
-                        Text(s, fontSize = 13.sp,
-                            color = if (i == 1) scheme.onPrimaryContainer else scheme.onSurface,
-                            maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ListsScene(
-    active: Boolean,
-    scheme: androidx.compose.material3.ColorScheme,
-    onDone: () -> Unit
-) {
-    FinishScene(active, 1500, onDone)
-    val rows = listOf(
-        Triple("قائمة دروس التوحيد", "12 مقطعًا", YouTubeIcons.PlaylistOutlined),
-        Triple("قائمة الردود العلمية", "8 مقاطع", YouTubeIcons.PlaylistOutlined),
-        Triple("موضوع الصلاة", "1,204 مقطع", YouTubeIcons.TopicsFilled),
-        Triple("موضوع العقيدة", "986 مقطع", YouTubeIcons.TopicsFilled)
-    )
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        rows.forEachIndexed { i, row ->
-            RevealItem(active, i) {
-                Surface(shape = RoundedCornerShape(14.dp), color = scheme.surfaceContainerLow,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(38.dp).background(scheme.primaryContainer, CircleShape),
-                            Alignment.Center) {
-                            Icon(row.third, null, tint = scheme.primary,
-                                modifier = Modifier.size(22.dp))
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(row.first, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                color = scheme.onSurface, maxLines = 1)
-                            Text(row.second, fontSize = 12.sp, color = scheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChannelsScene(
-    active: Boolean,
-    channels: List<ChannelItem>,
-    scheme: androidx.compose.material3.ColorScheme,
-    onDone: () -> Unit
-) {
-    FinishScene(active, 1500, onDone)
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-        fallbackTeasers.forEachIndexed { i, ch ->
-            RevealItem(active, i) {
-                val avatar = channels.firstOrNull {
-                    it.title.contains(ch.title.take(5))
-                }?.avatar
-                Surface(shape = RoundedCornerShape(14.dp), color = scheme.surfaceContainerLow,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        if (avatar != null) ChannelAvatar(avatar, 48)
-                        else Image(painterResource(ch.iconRes), null, contentScale = ContentScale.Crop,
-                            modifier = Modifier.size(48.dp).clip(CircleShape))
-                        Spacer(Modifier.width(12.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(ch.title, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                color = scheme.onSurface, maxLines = 1)
-                            Text(ch.desc, fontSize = 12.sp, color = scheme.onSurfaceVariant)
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun CoverMosaic(modifier: Modifier = Modifier) {
-    val cards = listOf(
-        Triple(0, -11f, -70), Triple(1, -6f, -37),
-        Triple(3, 6f, 37), Triple(4, 11f, 70), Triple(2, 0f, 0)
-    )
-    Box(modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-        cards.forEach { (i, angle, dx) ->
-            val w = if (i == 2) 184.dp else 140.dp
-            Image(
-                painterResource(ChannelArt.covers[i]), null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .offset(x = dx.dp, y = (if (i == 2) 0 else 10).dp)
-                    .graphicsLayer { rotationZ = angle }
-                    .shadow(if (i == 2) 16.dp else 8.dp, RoundedCornerShape(14.dp))
-                    .clip(RoundedCornerShape(14.dp))
-                    .size(w, w * 9f / 16f)
-            )
         }
     }
 }
