@@ -136,6 +136,7 @@ private fun CaptionAppRoot() {
     CaptionSearchTheme(darkTheme = true, themeName = theme) {
         if (!onboardingFinished) {
             OnboardingScreen(
+                repository = repository,
                 step = onboardingStep,
                 importing = importing,
                 importDone = importDone,

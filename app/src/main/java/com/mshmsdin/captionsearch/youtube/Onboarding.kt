@@ -3,7 +3,6 @@ package com.mshmsdin.captionsearch.youtube
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,10 +15,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -31,28 +30,37 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.mshmsdin.captionsearch.data.CaptionRepository
+import com.mshmsdin.captionsearch.data.ChannelItem
 import com.mshmsdin.captionsearch.data.YouTubeIcons
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
-private data class ChannelTeaser(val title: String, val desc: String, val icon: androidx.compose.ui.graphics.vector.ImageVector)
+private data class ChannelTeaser(val title: String, val desc: String, val icon: ImageVector, val avatar: ByteArray? = null)
 
-private val teasers = listOf(
-    ChannelTeaser("محمد بن شمس الدين", "الدروس والمحاضرات والخطب", YouTubeIcons.HomeFilled),
-    ChannelTeaser("الردود العلمية", "ردود على الشبهات والاعتراضات", YouTubeIcons.VideoFilled),
-    ChannelTeaser("كشف التلبيس", "تفنيد الأباطيل والدعاوى", YouTubeIcons.TopicsFilled),
-    ChannelTeaser("البثوث المباشرة", "اللقاءات والأسئلة المفتوحة", YouTubeIcons.LiveFilled)
+private val fallbackTeasers = listOf(
+    ChannelTeaser("محمد بن شمس الدين", "الدروس والمحاضرات", YouTubeIcons.HomeFilled),
+    ChannelTeaser("الردود العلمية", "ردود على الشبهات", YouTubeIcons.VideoFilled),
+    ChannelTeaser("كشف التلبيس", "تفنيد الأباطيل", YouTubeIcons.TopicsFilled),
+    ChannelTeaser("بثوث محمد بن شمس الدين", "اللقاءات المباشرة", YouTubeIcons.LiveFilled)
 )
 
 @Composable
 fun OnboardingScreen(
+    repository: CaptionRepository,
     step: Int,
     importing: Boolean,
     importDone: Boolean,
@@ -60,96 +68,100 @@ fun OnboardingScreen(
     onImport: () -> Unit,
     onStart: () -> Unit
 ) {
-    val reveal = remember { Animatable(0f) }
-    LaunchedEffect(step) {
-        reveal.snapTo(0f)
-        reveal.animateTo(1f, tween(750, easing = FastOutSlowInEasing))
+    var channels by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
+    var covers by remember { mutableStateOf<List<ByteArray?>>(emptyList()) }
+    LaunchedEffect(Unit) {
+        channels = withContext(Dispatchers.IO) { repository.channels() }
+        covers = withContext(Dispatchers.IO) { repository.home(0, 6, false).map { it.thumb } }
     }
     val scheme = MaterialTheme.colorScheme
     Surface(Modifier.fillMaxSize(), color = scheme.background) {
-        Box(
-            Modifier.fillMaxSize().background(Brush.linearGradient(
-                listOf(scheme.background, scheme.primaryContainer.copy(alpha = 0.45f), scheme.background)
-            ))
-        ) {
-            when (step) {
-                0 -> WelcomePage(reveal.value, onNext, scheme.primary, scheme)
-                1 -> ImportIntroPage(reveal.value, onImport, scheme)
-                else -> ImportProgressPage(reveal.value, importing, importDone, onStart, scheme)
-            }
+        when (step) {
+            0 -> WelcomePage(channels, covers, onNext, scheme)
+            1 -> ImportIntroPage(onImport, scheme)
+            else -> ImportProgressPage(importing, importDone, onStart, scheme)
         }
     }
 }
 
 @Composable
 private fun WelcomePage(
-    p: Float,
+    channels: List<ChannelItem>,
+    covers: List<ByteArray?>,
     onNext: () -> Unit,
-    accent: Color,
     scheme: androidx.compose.material3.ColorScheme
 ) {
+    val fade = remember { Animatable(0f) }
+    LaunchedEffect(Unit) { fade.animateTo(1f, tween(600, easing = FastOutSlowInEasing)) }
+    val teasers = if (channels.isEmpty()) fallbackTeasers else channels.map { ch ->
+        ChannelTeaser(ch.title, "${ch.count} مقطع", YouTubeIcons.VideoFilled, ch.avatar)
+    }
     Column(
-        Modifier.fillMaxSize().padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceBetween
+        Modifier.fillMaxSize().padding(24.dp).graphicsLayer(alpha = fade.value),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(Modifier.height(24.dp))
-        Image(
-            YouTubeIcons.lockup(Color.White),
-            contentDescription = "YouTube",
-            modifier = Modifier.height(34.dp).graphicsLayer(alpha = p, translationY = (1f - p) * 40)
-        )
+        Spacer(Modifier.height(28.dp))
+        YouTubeLogo(Modifier.height(26.dp))
+        Spacer(Modifier.height(28.dp))
         Text(
-            "مرحبًا بك",
-            style = MaterialTheme.typography.headlineMedium,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.graphicsLayer(alpha = p, translationY = (1f - p) * 30)
+            "ابحث في كلام الشيخ لحظيًا",
+            style = MaterialTheme.typography.headlineSmall,
+            color = scheme.onSurface,
+            textAlign = TextAlign.Center
         )
+        Spacer(Modifier.height(8.dp))
         Text(
-            "ابحث في كلام الشيخ محمد بن شمس الدين لحظيًا — في الدروس، الردود، كشف التلبيس، والبثوث. اكتب كلمة واقرأ المقطع الذي قيلت فيه مباشرة.",
+            "اكتب كلمة فتظهر لك المقاطع التي قيلت فيها، من دروس وردود وبثوث الشيخ محمد بن شمس الدين.",
             style = MaterialTheme.typography.bodyMedium,
             color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 12.dp).graphicsLayer(alpha = p)
+            textAlign = TextAlign.Center
         )
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            teasers.forEachIndexed { i, ch ->
-                val local = (p - i * 0.14f).coerceIn(0f, 1f)
+        if (covers.isNotEmpty()) {
+            Spacer(Modifier.height(22.dp))
+            LazyRow(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(covers.take(5)) { bytes ->
+                    Thumbnail(
+                        bytes,
+                        Modifier.size(132.dp, 76.dp).clip(RoundedCornerShape(12.dp))
+                    )
+                }
+            }
+        }
+        Spacer(Modifier.height(22.dp))
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            teasers.forEach { ch ->
                 Card(
-                    Modifier.fillMaxWidth().graphicsLayer(
-                        alpha = local,
-                        translationX = (1f - local) * (if (i % 2 == 0) -60f else 60f)
-                    ),
-                    shape = RoundedCornerShape(18.dp),
-                    colors = CardDefaults.cardColors(containerColor = scheme.surface.copy(alpha = 0.92f))
+                    Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = CardDefaults.cardColors(containerColor = scheme.surface)
                 ) {
-                    Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            Modifier.size(42.dp).background(accent.copy(alpha = 0.22f), CircleShape),
-                            Alignment.Center
-                        ) { Icon(ch.icon, null, tint = accent, modifier = Modifier.size(22.dp)) }
+                    Row(Modifier.padding(11.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ChannelAvatar(ch.avatar, 40)
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(ch.title, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                                fontSize = 14.sp, color = scheme.onSurface, maxLines = 1)
+                            Text(ch.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                color = scheme.onSurface, maxLines = 1)
                             Text(ch.desc, fontSize = 11.sp, color = scheme.onSurfaceVariant, maxLines = 1)
                         }
+                        Icon(ch.icon, null, tint = scheme.primary, modifier = Modifier.size(18.dp))
                     }
                 }
             }
         }
+        Spacer(Modifier.weight(1f))
         Button(
             onClick = onNext,
-            Modifier.fillMaxWidth().height(52.dp).graphicsLayer(alpha = p),
-            colors = ButtonDefaults.buttonColors(containerColor = accent)
+            Modifier.fillMaxWidth().height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = scheme.primary)
         ) { Text("التالي", fontSize = 16.sp) }
     }
 }
 
 @Composable
 private fun ImportIntroPage(
-    p: Float,
     onImport: () -> Unit,
     scheme: androidx.compose.material3.ColorScheme
 ) {
@@ -159,23 +171,21 @@ private fun ImportIntroPage(
         verticalArrangement = Arrangement.Center
     ) {
         Box(
-            Modifier.size(120.dp).background(scheme.primary.copy(alpha = 0.16f), CircleShape)
-                .graphicsLayer(alpha = p, scaleX = 0.8f + p * 0.2f, scaleY = 0.8f + p * 0.2f),
+            Modifier.size(96.dp).background(scheme.primaryContainer, CircleShape),
             Alignment.Center
         ) {
-            Icon(YouTubeIcons.VideoFilled, null, tint = scheme.primary, modifier = Modifier.size(56.dp))
+            Icon(YouTubeIcons.VideoFilled, null, tint = scheme.primary, modifier = Modifier.size(46.dp))
         }
         Spacer(Modifier.height(24.dp))
-        Text("القاعدة جاهزة للاستيراد", style = MaterialTheme.typography.headlineSmall,
-            color = Color.White, textAlign = TextAlign.Center,
-            modifier = Modifier.graphicsLayer(alpha = p))
+        Text("استيراد قاعدة البيانات", style = MaterialTheme.typography.headlineSmall,
+            color = scheme.onSurface, textAlign = TextAlign.Center)
         Spacer(Modifier.height(10.dp))
         Text(
-            "اختر ملف قاعدة البيانات مرة واحدة ليتم حفظه على جهازك، ويعمل التطبيق بعدها بدون إنترنت.",
-            style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
-            textAlign = TextAlign.Center, modifier = Modifier.padding(horizontal = 16.dp)
+            "اختر ملف القاعدة مرة واحدة، وسيُحفظ على جهازك ليعمل التطبيق بدون إنترنت.",
+            style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant, textAlign = TextAlign.Center
         )
-        Spacer(Modifier.height(32.dp))
+        Spacer(Modifier.height(30.dp))
         Button(onClick = onImport, Modifier.fillMaxWidth().height(52.dp),
             colors = ButtonDefaults.buttonColors(containerColor = scheme.primary)) {
             Text("استيراد قاعدة البيانات", fontSize = 15.sp)
@@ -185,7 +195,6 @@ private fun ImportIntroPage(
 
 @Composable
 private fun ImportProgressPage(
-    p: Float,
     importing: Boolean,
     done: Boolean,
     onStart: () -> Unit,
@@ -198,28 +207,28 @@ private fun ImportProgressPage(
     ) {
         if (importing) {
             CircularProgressIndicator(
-                modifier = Modifier.size(84.dp).graphicsLayer(alpha = p),
+                modifier = Modifier.size(88.dp),
                 color = scheme.primary,
-                strokeWidth = 7.dp
+                strokeWidth = 8.dp
             )
-            Spacer(Modifier.height(24.dp))
-            Text("جارٍ تجهيز القاعدة...", style = MaterialTheme.typography.titleMedium,
-                color = Color.White)
         } else {
             Box(
-                Modifier.size(96.dp).background(scheme.primary.copy(alpha = 0.18f), CircleShape),
+                Modifier.size(88.dp).background(scheme.primaryContainer, CircleShape),
                 Alignment.Center
             ) {
-                Icon(Icons.Default.Check, null, tint = scheme.primary, modifier = Modifier.size(48.dp))
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.Default.Check, null,
+                    tint = scheme.primary, modifier = Modifier.size(44.dp)
+                )
             }
-            Spacer(Modifier.height(20.dp))
-            Text("تم بنجاح", style = MaterialTheme.typography.headlineSmall, color = Color.White)
+            Spacer(Modifier.height(24.dp))
+            Text("اكتمل الاستيراد", style = MaterialTheme.typography.titleMedium,
+                color = scheme.onSurface)
             Spacer(Modifier.height(28.dp))
-            Button(
-                onClick = onStart,
-                Modifier.fillMaxWidth().height(54.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = scheme.primary)
-            ) { Text("البَدأ", fontSize = 17.sp) }
+            Button(onClick = onStart, Modifier.fillMaxWidth().height(54.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = scheme.primary)) {
+                Text("البَدأ", fontSize = 17.sp)
+            }
         }
     }
 }
