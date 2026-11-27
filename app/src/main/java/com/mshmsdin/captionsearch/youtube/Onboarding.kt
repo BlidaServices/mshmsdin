@@ -86,9 +86,37 @@ private val fallbackTeasers = listOf(
     ChannelTeaser("بثوث محمد بن شمس الدين", "اللقاءات المباشرة", ChannelArt.iconFor("بثوث محمد بن شمس الدين"))
 )
 
-private val demoResults = listOf(
-    "فأول ما يجب على المسلم تعلمه الصلاة" to "الشيخ · 00:04:12",
-    "والصلاة نور، وهي عمود الدين" to "الشيخ · 01:12:45"
+private data class DemoStep(val query: String, val headline: String, val results: List<Pair<String, String>>)
+
+private val demos = listOf(
+    DemoStep(
+        "الصلاة", "ابحث بدون إنترنت",
+        listOf(
+            "فأول ما يجب على المسلم تعلمه الصلاة" to "الشيخ · 00:04:12",
+            "والصلاة نور، وهي عمود الدين" to "الشيخ · 01:12:45"
+        )
+    ),
+    DemoStep(
+        "الجماعة", "من السؤال إلى الجواب",
+        listOf(
+            "ما حكم صلاة الجماعة؟ قال النبي صلى الله عليه وسلم" to "ردود العلمية · 00:14:22",
+            "فضل صلاة الجماعة على فردها درجات" to "الشيخ · 00:16:03"
+        )
+    ),
+    DemoStep(
+        "الكابشن", "الكابشن والفصول",
+        listOf(
+            "الحمد لله والصلاة والسلام على رسول الله" to "00:00:12",
+            "أما بعد، فإن أصدق الحديث كتاب الله" to "00:00:31"
+        )
+    ),
+    DemoStep(
+        "المواضيع", "كل المحتوى في مكان واحد",
+        listOf(
+            "تصفح المواضيع عند الشيخ محمد بن شمس الدين" to "9,765 موضوعًا",
+            "قوائم الشيخ الموثقة في التطبيق" to "145 قائمة"
+        )
+    )
 )
 
 @Composable
@@ -125,22 +153,24 @@ fun OnboardingScreen(
                 key = { it }
             ) { page ->
                 val active = pagerState.currentPage == page
+                var sceneDone by remember { mutableStateOf(false) }
+                LaunchedEffect(active) { if (!active) sceneDone = false }
                 when (page) {
-                    0 -> PageScaffold(active, "اكتب كلمة… تظهر اللحظة",
-                        listOf("2,087,985 كابشن", "بدون إنترنت"), scheme) {
-                        TypingSearchVisual(active, scheme)
-                    }
-                    1 -> PageScaffold(active, "من السؤال إلى الجواب",
-                        listOf("3,886 سؤالًا", "ينتقل للثانية"), scheme) {
-                        QnaVisual(active, scheme)
-                    }
-                    2 -> PageScaffold(active, "الكابشن والفصول",
-                        listOf("اضغط السطر", "شارة CC"), scheme) {
-                        PlayerVisual(active, scheme)
-                    }
-                    3 -> PageScaffold(active, "كل المحتوى في مكان واحد",
-                        listOf("4 قنوات", "6 ألوان"), scheme) {
-                        BrowseVisual(active, channels, scheme)
+                    in 0 until 4 -> {
+                        val demo = demos[page]
+                        val heroExtra: @Composable () -> Unit = when (page) {
+                            2 -> { { PlayerHero(scheme) } }
+                            3 -> { { BrowseHero(channels) } }
+                            else -> { {} }
+                        }
+                        PageScaffold(active, demo.headline, sceneDone, scheme) {
+                            TypingDemo(
+                                active = active,
+                                demo = demo,
+                                scheme = scheme,
+                                heroExtra = heroExtra
+                            ) { sceneDone = true }
+                        }
                     }
                     else -> ImportPage(importing, importDone, onImport, scheme)
                 }
@@ -181,10 +211,51 @@ fun OnboardingScreen(
 }
 
 @Composable
+private fun PageScaffold(
+    active: Boolean,
+    headline: String,
+    showHeadline: Boolean,
+    scheme: androidx.compose.material3.ColorScheme,
+    hero: @Composable () -> Unit
+) {
+    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { hero() }
+        Spacer(Modifier.height(12.dp))
+        if (showHeadline) AnimatedHeadline(headline, scheme)
+        else Spacer(Modifier.height(52.dp))
+    }
+}
+
+@Composable
+private fun AnimatedHeadline(text: String, scheme: androidx.compose.material3.ColorScheme) {
+    val a = remember { Animatable(0f) }
+    LaunchedEffect(text) {
+        a.snapTo(0f)
+        delay(80)
+        a.animateTo(1f, spring(dampingRatio = 0.62f, stiffness = Spring.StiffnessLow))
+    }
+    Box(Modifier.fillMaxWidth().height(52.dp), contentAlignment = Alignment.Center) {
+        Surface(
+            color = scheme.primaryContainer,
+            shape = RoundedCornerShape(26.dp),
+            modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = 0.6f + 0.4f * a.value }
+        ) {
+            Text(
+                text, fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                color = scheme.onPrimaryContainer, textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 10.dp).graphicsLayer {
+                    alpha = a.value
+                    translationY = (1f - a.value) * 16
+                }
+            )
+        }
+    }
+}
+
+@Composable
 private fun RevealItem(
     active: Boolean,
     index: Int,
-    fromY: Float = 38f,
     content: @Composable () -> Unit
 ) {
     val v = remember { Animatable(0f) }
@@ -194,86 +265,44 @@ private fun RevealItem(
             return@LaunchedEffect
         }
         v.snapTo(0f)
-        delay(index * 80L)
+        delay(index * 90L)
         v.animateTo(1f, spring(dampingRatio = 0.68f, stiffness = Spring.StiffnessMediumLow))
     }
     Box(Modifier.graphicsLayer {
         alpha = v.value.coerceIn(0f, 1f)
-        translationY = (1f - v.value) * fromY
-        val s = 0.90f + 0.10f * v.value
+        translationY = (1f - v.value) * 40
+        val s = 0.9f + 0.1f * v.value
         scaleX = s
         scaleY = s
     }) { content() }
 }
 
 @Composable
-private fun Chip(text: String, scheme: androidx.compose.material3.ColorScheme) {
-    Surface(shape = RoundedCornerShape(50), color = scheme.secondaryContainer) {
-        Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-            color = scheme.onSecondaryContainer,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
-    }
-}
-
-@Composable
-private fun HighlightedCaption(
-    text: String,
-    word: String,
-    scheme: androidx.compose.material3.ColorScheme,
-    fontSize: androidx.compose.ui.unit.TextUnit = 15.sp
-) {
-    val i = text.indexOf(word)
-    val annotated = if (i < 0) AnnotatedString(text) else buildAnnotatedString {
-        append(text.substring(0, i))
-        withStyle(SpanStyle(color = scheme.onPrimaryContainer,
-            background = scheme.primaryContainer, fontWeight = FontWeight.Bold)) {
-            append(word)
-        }
-        append(text.substring(i + word.length))
-    }
-    Text(annotated, fontSize = fontSize, color = scheme.onSurface,
-        lineHeight = fontSize * 1.5f, maxLines = 2, overflow = TextOverflow.Ellipsis)
-}
-
-@Composable
-private fun PageScaffold(
+private fun TypingDemo(
     active: Boolean,
-    title: String,
-    chips: List<String>,
+    demo: DemoStep,
     scheme: androidx.compose.material3.ColorScheme,
-    hero: @Composable () -> Unit
+    heroExtra: @Composable () -> Unit,
+    onDone: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) { hero() }
-        Spacer(Modifier.height(12.dp))
-        RevealItem(active, 1) {
-            Text(title, fontSize = 26.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold,
-                color = scheme.onSurface, textAlign = TextAlign.Center)
-        }
-        Spacer(Modifier.height(12.dp))
-        RevealItem(active, 2) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                chips.forEach { Chip(it, scheme) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun TypingSearchVisual(active: Boolean, scheme: androidx.compose.material3.ColorScheme) {
-    val word = "الصلاة"
     var typed by remember { mutableStateOf(0) }
-    val done = typed >= word.length
+    val done = typed >= demo.query.length
     LaunchedEffect(active) {
         if (!active) {
             typed = 0
             return@LaunchedEffect
         }
         typed = 0
-        delay(400)
-        while (typed < word.length) {
-            delay(140)
+        delay(420)
+        while (typed < demo.query.length) {
+            delay(130)
             typed++
+        }
+    }
+    LaunchedEffect(done) {
+        if (done) {
+            delay(1100)
+            onDone()
         }
     }
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -284,21 +313,23 @@ private fun TypingSearchVisual(active: Boolean, scheme: androidx.compose.materia
             shadowElevation = 8.dp,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Row(Modifier.padding(horizontal = 22.dp, vertical = 24.dp),
+            Row(Modifier.padding(horizontal = 22.dp, vertical = 22.dp),
                 verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Search, null, tint = scheme.primary,
                     modifier = Modifier.size(28.dp))
                 Spacer(Modifier.width(16.dp))
-                Text(word.take(typed), fontSize = 24.sp, fontWeight = FontWeight.Bold,
+                Text(demo.query.take(typed), fontSize = 23.sp, fontWeight = FontWeight.Bold,
                     color = scheme.onSurface)
                 if (!done) Box(Modifier.width(2.5.dp).height(26.dp).background(scheme.primary))
             }
         }
-        Spacer(Modifier.height(20.dp))
-        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            demoResults.forEachIndexed { i, (caption, meta) ->
+        Spacer(Modifier.height(14.dp))
+        heroExtra()
+        Spacer(Modifier.height(12.dp))
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+            demo.results.forEachIndexed { i, (caption, meta) ->
                 RevealItem(active = done, index = i) {
-                    ResultCard(caption, meta, word, scheme)
+                    ResultCard(caption, meta, demo.query, scheme)
                 }
             }
         }
@@ -314,108 +345,55 @@ private fun ResultCard(
         modifier = Modifier.fillMaxWidth()) {
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
             Image(painterResource(ChannelArt.covers[0]), null, contentScale = ContentScale.Crop,
-                modifier = Modifier.size(132.dp, 74.dp).clip(RoundedCornerShape(12.dp)))
-            Spacer(Modifier.width(14.dp))
+                modifier = Modifier.size(120.dp, 68.dp).clip(RoundedCornerShape(12.dp)))
+            Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                HighlightedCaption(text, word, scheme)
-                Spacer(Modifier.height(6.dp))
-                Text(meta, fontSize = 12.sp, color = scheme.onSurfaceVariant, maxLines = 1)
-            }
-        }
-    }
-}
-
-@Composable
-private fun QnaVisual(active: Boolean, scheme: androidx.compose.material3.ColorScheme) {
-    val items = listOf("ما حكم صلاة الجماعة؟" to "00:14:22",
-        "هل يُشترط العلم قبل العمل؟" to "00:02:07")
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        items.forEachIndexed { i, (q, t) ->
-            RevealItem(active, i) {
-                Surface(shape = RoundedCornerShape(18.dp), color = scheme.surfaceContainerLow,
-                    modifier = Modifier.fillMaxWidth()) {
-                    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(40.dp).background(scheme.primaryContainer, CircleShape),
-                            Alignment.Center) {
-                            Icon(Icons.Default.PlayArrow, null, tint = scheme.primary,
-                                modifier = Modifier.size(24.dp))
-                        }
-                        Spacer(Modifier.width(14.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(q, fontSize = 16.sp, fontWeight = FontWeight.Medium,
-                                color = scheme.onSurface, maxLines = 2)
-                            Spacer(Modifier.height(4.dp))
-                            Text("ينتقل إلى $t", fontSize = 12.sp, color = scheme.primary)
-                        }
+                val i = text.indexOf(word)
+                val annotated = if (i < 0) AnnotatedString(text) else buildAnnotatedString {
+                    append(text.substring(0, i))
+                    withStyle(SpanStyle(color = scheme.onPrimaryContainer,
+                        background = scheme.primaryContainer, fontWeight = FontWeight.Bold)) {
+                        append(word)
                     }
+                    append(text.substring(i + word.length))
                 }
+                Text(annotated, fontSize = 14.sp, color = scheme.onSurface,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(5.dp))
+                Text(meta, fontSize = 11.sp, color = scheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
 }
 
 @Composable
-private fun PlayerVisual(active: Boolean, scheme: androidx.compose.material3.ColorScheme) {
-    Column(Modifier.fillMaxWidth()) {
-        RevealItem(active, 0) {
-            Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))) {
-                Image(painterResource(ChannelArt.covers[1]), null,
-                    contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-                Box(Modifier.align(Alignment.Center).size(60.dp)
-                    .background(Color.Black.copy(alpha = 0.5f), CircleShape), Alignment.Center) {
-                    Icon(Icons.Default.PlayArrow, null, tint = Color.White,
-                        modifier = Modifier.size(38.dp))
-                }
-                Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)) {
-                    Text("CC", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
-                }
-            }
+private fun PlayerHero(scheme: androidx.compose.material3.ColorScheme) {
+    Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(16.dp))) {
+        Image(painterResource(ChannelArt.covers[1]), null,
+            contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Box(Modifier.align(Alignment.Center).size(56.dp)
+            .background(Color.Black.copy(alpha = 0.5f), CircleShape), Alignment.Center) {
+            Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(34.dp))
         }
-        Spacer(Modifier.height(12.dp))
-        val cues = listOf("00:00:12" to "الحمد لله والصلاة والسلام على رسول الله…",
-            "00:00:31" to "أما بعد، فإن أصدق الحديث كتاب الله…",
-            "00:01:04" to "وخير الهدي هدي محمد صلى الله عليه وسلم…")
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            cues.forEachIndexed { i, (t, s) ->
-                RevealItem(active, i + 1) {
-                    Surface(shape = RoundedCornerShape(12.dp),
-                        color = if (i == 1) scheme.primaryContainer else scheme.surfaceContainerLow) {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp)) {
-                            Text(t, fontSize = 11.sp,
-                                color = if (i == 1) scheme.onPrimaryContainer else scheme.primary,
-                                modifier = Modifier.width(58.dp))
-                            Text(s, fontSize = 13.sp,
-                                color = if (i == 1) scheme.onPrimaryContainer else scheme.onSurfaceVariant,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        }
-                    }
-                }
-            }
+        Surface(color = Color.Black.copy(alpha = 0.65f), shape = RoundedCornerShape(6.dp),
+            modifier = Modifier.align(Alignment.BottomEnd).padding(8.dp)) {
+            Text("CC", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color.White,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp))
         }
     }
 }
 
 @Composable
-private fun BrowseVisual(
-    active: Boolean,
-    channels: List<ChannelItem>,
-    scheme: androidx.compose.material3.ColorScheme
-) {
-    val teasers = if (channels.isEmpty()) fallbackTeasers else channels.map {
-        ChannelTeaser(it.title, "${it.count} مقطع", ChannelArt.iconFor(it.title), it.avatar)
-    }
+private fun BrowseHero(channels: List<ChannelItem>) {
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        RevealItem(active, 0) { CoverMosaic() }
-        Spacer(Modifier.height(20.dp))
-        RevealItem(active, 1) {
-            Row(horizontalArrangement = Arrangement.spacedBy(18.dp)) {
-                teasers.take(4).forEach { ch ->
-                    if (ch.avatar != null) ChannelAvatar(ch.avatar, 52)
-                    else Image(painterResource(ch.iconRes), null, contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(52.dp).clip(CircleShape))
-                }
+        CoverMosaic()
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            fallbackTeasers.take(4).forEach { ch ->
+                val real = channels.firstOrNull { it.title.contains(ch.title.take(5)) }?.avatar
+                if (real != null) ChannelAvatar(real, 44)
+                else Image(painterResource(ch.iconRes), null, contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(44.dp).clip(CircleShape))
             }
         }
     }
@@ -424,17 +402,17 @@ private fun BrowseVisual(
 @Composable
 private fun CoverMosaic(modifier: Modifier = Modifier) {
     val cards = listOf(
-        Triple(0, -11f, -78), Triple(1, -6f, -41),
-        Triple(3, 6f, 41), Triple(4, 11f, 78), Triple(2, 0f, 0)
+        Triple(0, -11f, -70), Triple(1, -6f, -37),
+        Triple(3, 6f, 37), Triple(4, 11f, 70), Triple(2, 0f, 0)
     )
-    Box(modifier.fillMaxWidth().height(178.dp), contentAlignment = Alignment.Center) {
+    Box(modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
         cards.forEach { (i, angle, dx) ->
-            val w = if (i == 2) 196.dp else 148.dp
+            val w = if (i == 2) 184.dp else 140.dp
             Image(
                 painterResource(ChannelArt.covers[i]), null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .offset(x = dx.dp, y = (if (i == 2) 0 else 12).dp)
+                    .offset(x = dx.dp, y = (if (i == 2) 0 else 10).dp)
                     .graphicsLayer { rotationZ = angle }
                     .shadow(if (i == 2) 16.dp else 8.dp, RoundedCornerShape(14.dp))
                     .clip(RoundedCornerShape(14.dp))
