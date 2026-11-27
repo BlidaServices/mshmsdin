@@ -2,7 +2,6 @@ package com.mshmsdin.captionsearch.youtube
 
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloat
@@ -65,7 +64,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mshmsdin.captionsearch.data.CaptionRepository
@@ -435,52 +433,37 @@ private fun ImportPage(
 }
 
 @Composable
-private fun PlayLinearLoader(
-    color: Color,
-    trackColor: Color,
+private fun BlocksShuffle2(
     modifier: Modifier = Modifier,
-    barHeight: Dp = 7.dp
+    color: Color = MaterialTheme.colorScheme.primary
 ) {
-    val t = rememberInfiniteTransition(label = "playLoader")
-    val phase by t.animateFloat(
+    val transition = rememberInfiniteTransition(label = "blocksShuffle2")
+    val p by transition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1500, easing = LinearEasing), RepeatMode.Restart),
-        label = "phase"
+        animationSpec = infiniteRepeatable(
+            animation = tween(620, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "shuffle"
     )
-    Canvas(modifier.fillMaxWidth().height(barHeight)) {
-        val w = size.width
-        val h = size.height
-        val r = CornerRadius(h / 2f)
-        drawRoundRect(color = trackColor, cornerRadius = r, size = Size(w, h))
-        val ease = FastOutSlowInEasing
-        val head = ease.transform(phase)
-        var tail = ease.transform((phase - 0.25f + 1f) % 1f)
-        if (tail > head) tail -= 1f
-        val segW = (head - tail).coerceIn(0.08f, 0.62f) * w
-        drawRoundRect(
-            color = color,
-            topLeft = Offset(head * w - segW, 0f),
-            size = Size(segW, h),
-            cornerRadius = r
-        )
+    Canvas(modifier) {
+        val u = size.minDimension / 24f
+        val block = 10f * u
+        val x = (1f + 12f * p) * u
+        val y1 = (1f + 12f * p) * u
+        val y2 = (13f - 12f * p) * u
+        val radius = CornerRadius(u, u)
+        drawRoundRect(topLeft = Offset(x, y1), size = Size(block, block),
+            cornerRadius = radius, color = color)
+        drawRoundRect(topLeft = Offset(x, y2), size = Size(block, block),
+            cornerRadius = radius, color = color)
     }
 }
 
 @Composable
 private fun ImportBusyContent(scheme: androidx.compose.material3.ColorScheme) {
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Icon(YouTubeIcons.VideoFilled, null, tint = scheme.primary.copy(alpha = 0.9f),
-            modifier = Modifier.size(56.dp))
-        Spacer(Modifier.height(28.dp))
-        PlayLinearLoader(
-            color = scheme.primary,
-            trackColor = scheme.primary.copy(alpha = 0.18f),
-            modifier = Modifier.width(220.dp)
-        )
+    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        BlocksShuffle2(Modifier.size(60.dp), color = scheme.primary)
     }
 }
