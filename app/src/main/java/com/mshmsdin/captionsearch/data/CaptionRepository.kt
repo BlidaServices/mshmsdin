@@ -644,12 +644,13 @@ class CaptionRepository(private val context: Context) {
     private val channelFeedCache = LinkedHashMap<String, List<VideoItem>>()
 
     fun channelFeed(channelId: String, kind: String = "all", offset: Int = 0, limit: Int = 30): List<VideoItem> {
-        val key = "$channelId|$kind|$limit"
+        val key = "$channelId|$kind|$offset|$limit"
         if (offset == 0) synchronized(cacheLock) { channelFeedCache[key]?.let { return it } }
         val clause = when (kind) {
-            "live" -> "v.channel_id=? AND v.is_live=1"
+            "all" -> "v.channel_id=?"
             "short" -> "v.channel_id=? AND v.is_short=1"
-            else -> "v.channel_id=?"
+            "live" -> "v.channel_id=? AND v.is_live=1"
+            else -> throw IllegalArgumentException("channelFeed: unknown kind '$kind'")
         }
         val sql = videoSelect() + " WHERE $clause ORDER BY v.rowid ASC LIMIT ? OFFSET ?"
         val items = queryVideos(sql, listOf(channelId, limit, offset))
@@ -726,10 +727,11 @@ class CaptionRepository(private val context: Context) {
         return runCatching {
             c.createStatement().use { s ->
                 s.executeQuery(
-                    "SELECT ch.channel_id,ch.title," +
-                        "(SELECT COUNT(*) FROM videos v WHERE v.channel_id=ch.channel_id)," +
+                    "SELECT ch.channel_id,ch.title,COALESCE(v.cnt,0)," +
                         "${if (hasChannelAvatar) "ch.avatar" else "NULL"} " +
-                        "FROM channels ch ORDER BY (SELECT COUNT(*) FROM videos v WHERE v.channel_id=ch.channel_id) DESC"
+                        "FROM channels ch LEFT JOIN " +
+                        "(SELECT channel_id,COUNT(*) cnt FROM videos GROUP BY channel_id) v " +
+                        "ON v.channel_id=ch.channel_id ORDER BY v.cnt DESC"
                 ).use { rs ->
                     buildList {
                         while (rs.next()) {
@@ -870,12 +872,9 @@ class CaptionRepository(private val context: Context) {
 
     fun channelPlaylists(channelId: String): List<PlaylistItem> {
         val c = conn ?: return emptyList()
-        val thumbExpr = if (hasThumbImage) "v2.thumb_image" else "NULL"
         return runCatching {
             c.prepareStatement(
-                "SELECT p.playlist_id,p.title,COUNT(DISTINCT pv.video_id)," +
-                    "(SELECT $thumbExpr FROM playlist_videos x JOIN videos v2 ON v2.id=x.video_id " +
-                    "WHERE x.playlist_id=p.playlist_id AND v2.thumb_image IS NOT NULL ORDER BY x.position LIMIT 1) " +
+                "SELECT p.playlist_id,p.title,COUNT(DISTINCT pv.video_id) " +
                     "FROM playlists p JOIN playlist_videos pv ON pv.playlist_id=p.playlist_id " +
                     "JOIN videos v ON v.id=pv.video_id WHERE v.channel_id=? " +
                     "GROUP BY p.playlist_id ORDER BY COUNT(DISTINCT pv.video_id) DESC"
@@ -888,7 +887,7 @@ class CaptionRepository(private val context: Context) {
                                 id = rs.getString(1) ?: "",
                                 title = rs.getString(2) ?: "",
                                 count = rs.getInt(3),
-                                cover = rs.getBytes(4)
+                                cover = null
                             ))
                         }
                     }
@@ -899,19 +898,14 @@ class CaptionRepository(private val context: Context) {
 
     fun channelTopics(channelId: String): List<TopicItem> {
         val c = conn ?: return emptyList()
-        val thumbExpr = if (hasThumbImage) "v2.thumb_image" else "NULL"
         return runCatching {
             c.prepareStatement(
-                "SELECT t.topic_id,t.name,t.parent,COUNT(DISTINCT v.id)," +
-                    "(SELECT $thumbExpr FROM video_topics vt2 JOIN videos v2 ON v2.id=vt2.video_id " +
-                    "WHERE vt2.topic_id=t.topic_id AND v2.channel_id=? AND v2.thumb_image IS NOT NULL " +
-                    "ORDER BY v2.date DESC LIMIT 1) " +
+                "SELECT t.topic_id,t.name,t.parent,COUNT(DISTINCT v.id) " +
                     "FROM topics t JOIN video_topics vt ON vt.topic_id=t.topic_id " +
                     "JOIN videos v ON v.id=vt.video_id WHERE v.channel_id=? " +
                     "GROUP BY t.topic_id ORDER BY COUNT(DISTINCT v.id) DESC"
             ).use { ps ->
                 ps.setString(1, channelId)
-                ps.setString(2, channelId)
                 ps.executeQuery().use { rs ->
                     buildList {
                         while (rs.next()) {
@@ -920,7 +914,7 @@ class CaptionRepository(private val context: Context) {
                                 name = rs.getString(2) ?: "",
                                 parent = rs.getString(3) ?: "",
                                 count = rs.getInt(4),
-                                cover = rs.getBytes(5)
+                                cover = null
                             ))
                         }
                     }

@@ -399,19 +399,29 @@ fun TopicResultsView(
 @Composable
 fun ChannelsView(repository: CaptionRepository, version: Long, onOpen: (String) -> Unit) {
     var channels by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.ChannelItem>>(emptyList()) }
-    LaunchedEffect(version) { channels = withContext(Dispatchers.IO) { repository.channels() } }
-    LazyColumn(Modifier.fillMaxSize()) {
-        items(count = channels.size) { i ->
-            val ch = channels[i]
-            Row(Modifier.fillMaxWidth().clickable { onOpen(ch.id) }.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-                ChannelAvatar(ch.avatar, 52) { onOpen(ch.id) }
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(ch.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text("${ch.count} مقطع", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    var loading by remember { mutableStateOf(true) }
+    LaunchedEffect(version) {
+        loading = true
+        try { channels = withContext(Dispatchers.IO) { repository.channels() } }
+        finally { loading = false }
+    }
+    when {
+        loading -> Box(Modifier.fillMaxSize())
+        channels.isEmpty() -> EmptyState("لا توجد قنوات")
+        else -> LazyColumn(Modifier.fillMaxSize()) {
+            items(count = channels.size, key = { channels[it].id }) { i ->
+                val ch = channels[i]
+                Row(Modifier.fillMaxWidth().clickable { onOpen(ch.id) }.padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically) {
+                    ChannelAvatar(ch.avatar, 52)
+                    Spacer(Modifier.width(14.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(ch.title, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${ch.count} مقطع", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
+                HorizontalDivider()
             }
-            HorizontalDivider()
         }
     }
 }
@@ -432,22 +442,23 @@ fun ChannelDetailView(
     var videosLoading by remember { mutableStateOf(true) }
     var loadingMore by remember { mutableStateOf(false) }
     var ended by remember { mutableStateOf(false) }
-    val listState = remember { androidx.compose.foundation.lazy.LazyListState() }
+    val listState = remember(channelId, tab) { androidx.compose.foundation.lazy.LazyListState() }
     var playlists by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.PlaylistItem>>(emptyList()) }
     var topics by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.TopicItem>>(emptyList()) }
-    var playlistsLoading by remember { mutableStateOf(true) }
-    var topicsLoading by remember { mutableStateOf(true) }
+    var playlistsLoading by remember(channelId) { mutableStateOf(true) }
+    var topicsLoading by remember(channelId) { mutableStateOf(true) }
+    LaunchedEffect(channelId, version) {
+        info = withContext(Dispatchers.IO) { repository.channelInfo(channelId) }
+    }
     LaunchedEffect(channelId, version) {
         playlistsLoading = true
+        try { playlists = withContext(Dispatchers.IO) { repository.channelPlaylists(channelId) } }
+        finally { playlistsLoading = false }
+    }
+    LaunchedEffect(channelId, version) {
         topicsLoading = true
-        try {
-            info = withContext(Dispatchers.IO) { repository.channelInfo(channelId) }
-            playlists = withContext(Dispatchers.IO) { repository.channelPlaylists(channelId) }
-            topics = withContext(Dispatchers.IO) { repository.channelTopics(channelId) }
-        } finally {
-            playlistsLoading = false
-            topicsLoading = false
-        }
+        try { topics = withContext(Dispatchers.IO) { repository.channelTopics(channelId) } }
+        finally { topicsLoading = false }
     }
     LaunchedEffect(channelId, version, tab) {
         if (tab == "playlists" || tab == "topics") return@LaunchedEffect
@@ -459,7 +470,6 @@ fun ChannelDetailView(
         videosLoading = true
         ended = false
         videos = emptyList()
-        listState.scrollToItem(0)
         try {
             val page = withContext(Dispatchers.IO) {
                 repository.channelFeed(channelId, kind, 0, CHANNEL_PAGE)
