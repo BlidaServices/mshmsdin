@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -216,10 +218,8 @@ private fun ImportProgressPage(
                 Modifier.size(88.dp).background(scheme.primaryContainer, CircleShape),
                 Alignment.Center
             ) {
-                androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.Icons.Default.Check, null,
-                    tint = scheme.primary, modifier = Modifier.size(44.dp)
-                )
+                Icon(Icons.Default.Check, null, tint = scheme.primary,
+                    modifier = Modifier.size(44.dp))
             }
             Spacer(Modifier.height(24.dp))
             Text("اكتمل الاستيراد", style = MaterialTheme.typography.titleMedium,
