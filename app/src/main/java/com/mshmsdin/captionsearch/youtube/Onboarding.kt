@@ -1,6 +1,5 @@
 package com.mshmsdin.captionsearch.youtube
 
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -13,8 +12,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -22,17 +22,19 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -42,23 +44,30 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.mshmsdin.captionsearch.data.CaptionRepository
 import com.mshmsdin.captionsearch.data.ChannelItem
 import com.mshmsdin.captionsearch.data.YouTubeIcons
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val ONBOARD_PAGES = 5
+private const val IMPORT_PAGE = ONBOARD_PAGES - 1
 
 private data class ChannelTeaser(val title: String, val desc: String, val iconRes: Int, val avatar: ByteArray? = null)
 
@@ -75,112 +84,238 @@ fun OnboardingScreen(
     step: Int,
     importing: Boolean,
     importDone: Boolean,
-    onNext: () -> Unit,
     onImport: () -> Unit,
     onStart: () -> Unit
 ) {
     var channels by remember { mutableStateOf<List<ChannelItem>>(emptyList()) }
     LaunchedEffect(Unit) { channels = withContext(Dispatchers.IO) { repository.channels() } }
     val scheme = MaterialTheme.colorScheme
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(
+        initialPage = if (step >= 2 || importDone) IMPORT_PAGE else 0,
+        pageCount = { ONBOARD_PAGES }
+    )
+    LaunchedEffect(importDone) {
+        if (importDone) pagerState.animateScrollToPage(IMPORT_PAGE)
+    }
     Surface(Modifier.fillMaxSize(), color = scheme.background) {
-        if (step == 0) WelcomePage(channels, onNext, scheme)
-        else ImportPage(importing, importDone, onImport, onStart, scheme)
+        Column(
+            Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            YouTubeLogo(Modifier.height(26.dp))
+            Spacer(Modifier.height(10.dp))
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                userScrollEnabled = !importing,
+                key = { it }
+            ) { page ->
+                when (page) {
+                    0 -> OnboardContent(
+                        title = "ابحث في كلام الشيخ",
+                        body = "أكثر من مليوني كابشن من 10,794 مقطعًا، مفهرسة بالكلمة: تكتب «الصلاة» فتظهر كل اللحظات التي قيلت فيها، لا عناوين فقط.",
+                        note = "2,087,985 كابشن · 10,794 مقطع",
+                        scheme = scheme
+                    ) { SearchVisual(scheme) }
+                    1 -> OnboardContent(
+                        title = "سؤال وجواب",
+                        body = "آلاف الأسئلة مربوطًا بمكان إجابتها داخل المقطع: اختر السؤال فيقفز المشغّل إلى الثانية التي يبدأ فيها الجواب.",
+                        note = "102,484 مدخلًا مفهرسًا",
+                        scheme = scheme
+                    ) { QnaVisual(scheme) }
+                    2 -> OnboardContent(
+                        title = "الكابشن والفصول",
+                        body = "شغّل المقطع، تنقّل بين الفصول، واضغط أي سطر من الكابشن لينتقل الفيديو إلى تلك اللحظة. شارة CC تعني أن المقطع مفهرس.",
+                        note = null,
+                        scheme = scheme
+                    ) { PlayerVisual(scheme) }
+                    3 -> OnboardContent(
+                        title = "تصفح وخصّص، وبدون إنترنت",
+                        body = "الرئيسية وشورتس والمواضيع والقنوات الأربع، مع قوائمها ومواضيعها. من الإعدادات: حجم البطاقة وستة ألوان — وكل هذا بعد استيراد واحد.",
+                        note = "4 قنوات · 9,765 موضوعًا · 145 قائمة",
+                        scheme = scheme
+                    ) { BrowseVisual(channels, scheme) }
+                    else -> ImportPage(importing, importDone, onImport, scheme)
+                }
+            }
+            Spacer(Modifier.height(10.dp))
+            PageDots(pagerState.currentPage, ONBOARD_PAGES, scheme)
+            Spacer(Modifier.height(10.dp))
+            val onImportPage = pagerState.currentPage == IMPORT_PAGE
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (pagerState.currentPage > 0 && !importing) {
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch { pagerState.animateScrollToPage(pagerState.currentPage - 1) }
+                        },
+                        modifier = Modifier.weight(1f).height(52.dp),
+                        border = BorderStroke(1.dp, scheme.outline),
+                        shape = RoundedCornerShape(26.dp)
+                    ) { Text("السابق", fontSize = 16.sp) }
+                }
+                Button(
+                    onClick = {
+                        if (onImportPage) {
+                            if (importDone) onStart()
+                        } else scope.launch {
+                            pagerState.animateScrollToPage(pagerState.currentPage + 1)
+                        }
+                    },
+                    enabled = !onImportPage || (importDone && !importing),
+                    modifier = Modifier.weight(1f).height(52.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = scheme.primary,
+                        contentColor = scheme.onPrimary,
+                        disabledContainerColor = scheme.surfaceVariant,
+                        disabledContentColor = scheme.onSurfaceVariant.copy(alpha = 0.55f)
+                    )
+                ) { Text(if (onImportPage) "البَدأ" else "التالي", fontSize = 16.sp) }
+            }
+        }
     }
 }
 
 @Composable
-private fun OnboardingScaffold(
+private fun OnboardContent(
+    title: String,
+    body: String,
+    note: String?,
     scheme: androidx.compose.material3.ColorScheme,
-    buttonText: String,
-    buttonEnabled: Boolean,
-    onClick: () -> Unit,
-    center: Boolean = false,
-    content: @Composable ColumnScope.() -> Unit
+    visual: @Composable () -> Unit
 ) {
     Column(
-        Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 24.dp, vertical = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        YouTubeLogo(Modifier.height(26.dp))
-        Spacer(Modifier.height(20.dp))
-        if (center) {
-            Column(
-                Modifier.weight(1f).fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center,
-                content = content
-            )
-        } else {
-            Column(
-                Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                content = content
-            )
+        visual()
+        Spacer(Modifier.height(22.dp))
+        Text(title, style = MaterialTheme.typography.headlineSmall,
+            color = scheme.onSurface, textAlign = TextAlign.Center)
+        Spacer(Modifier.height(10.dp))
+        Text(body, style = MaterialTheme.typography.bodyMedium,
+            color = scheme.onSurfaceVariant, textAlign = TextAlign.Center)
+        if (note != null) {
+            Spacer(Modifier.height(14.dp))
+            Text(note, fontSize = 12.sp, color = scheme.primary, textAlign = TextAlign.Center)
         }
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onClick,
-            enabled = buttonEnabled,
-            modifier = Modifier.fillMaxWidth().height(52.dp),
-            colors = ButtonDefaults.buttonColors(
-                containerColor = scheme.primary,
-                contentColor = scheme.onPrimary,
-                disabledContainerColor = scheme.surfaceVariant,
-                disabledContentColor = scheme.onSurfaceVariant.copy(alpha = 0.55f)
-            )
-        ) { Text(buttonText, fontSize = 16.sp) }
     }
 }
 
 @Composable
-private fun WelcomePage(
-    channels: List<ChannelItem>,
-    onNext: () -> Unit,
-    scheme: androidx.compose.material3.ColorScheme
-) {
-    val fade = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { fade.animateTo(1f, tween(600, easing = FastOutSlowInEasing)) }
-    val teasers = if (channels.isEmpty()) fallbackTeasers else channels.map { ch ->
-        ChannelTeaser(ch.title, "${ch.count} مقطع", ChannelArt.iconFor(ch.title), ch.avatar)
+private fun PageDots(current: Int, total: Int, scheme: androidx.compose.material3.ColorScheme) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically) {
+        repeat(total) { i ->
+            val active = i == current
+            Box(
+                Modifier.height(8.dp).width(if (active) 22.dp else 8.dp)
+                    .clip(CircleShape)
+                    .background(if (active) scheme.primary else scheme.outlineVariant)
+            )
+        }
     }
-    OnboardingScaffold(scheme, "التالي", true, onNext) {
-        Column(Modifier.graphicsLayer(alpha = fade.value),
-            horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("ابحث في كلام الشيخ لحظيًا", style = MaterialTheme.typography.headlineSmall,
-                color = scheme.onSurface, textAlign = TextAlign.Center)
-            Spacer(Modifier.height(8.dp))
-            Text("اكتب كلمة فتظهر المقاطع التي قيلت فيها، من الدروس والردود والبثوث.",
-                style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
-                textAlign = TextAlign.Center)
-            CoverMosaic()
-            Spacer(Modifier.height(12.dp))
-            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                teasers.forEach { ch ->
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = scheme.surfaceContainerLow,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        ListItem(
-                            leadingContent = {
-                                if (ch.avatar != null) ChannelAvatar(ch.avatar, 40)
-                                else Image(
-                                    painterResource(ch.iconRes), null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                                )
-                            },
-                            headlineContent = {
-                                Text(ch.title, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                                    color = scheme.onSurface, maxLines = 1)
-                            },
-                            supportingContent = {
-                                Text(ch.desc, fontSize = 11.sp,
-                                    color = scheme.onSurfaceVariant, maxLines = 1)
-                            }
-                        )
+}
+
+@Composable
+private fun SearchVisual(scheme: androidx.compose.material3.ColorScheme) {
+    Column(Modifier.fillMaxWidth()) {
+        Surface(shape = RoundedCornerShape(26.dp), color = scheme.surfaceContainerHigh,
+            modifier = Modifier.fillMaxWidth()) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Search, null, tint = scheme.onSurfaceVariant,
+                    modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text("الصلاة", color = scheme.onSurface, fontSize = 14.sp)
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.width(2.dp).height(16.dp).background(scheme.primary))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        listOf(0, 2).forEach { idx ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Image(painterResource(ChannelArt.covers[idx]), null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(96.dp, 54.dp).clip(RoundedCornerShape(8.dp)))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("فأول ما يجب على المسلم تعلمه الصلاة", fontSize = 12.sp,
+                        color = scheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text("محمد بن شمس الدين · 00:04:12", fontSize = 10.sp,
+                        color = scheme.onSurfaceVariant, maxLines = 1)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QnaVisual(scheme: androidx.compose.material3.ColorScheme) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        listOf("ما حكم صلاة الجماعة؟" to "00:14:22",
+            "هل يُشترط العلم قبل العمل؟" to "00:02:07").forEach { (q, t) ->
+            Surface(shape = RoundedCornerShape(14.dp), color = scheme.surfaceContainerLow,
+                modifier = Modifier.fillMaxWidth()) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.PlayArrow, null, tint = scheme.primary,
+                        modifier = Modifier.size(20.dp))
+                    Spacer(Modifier.width(10.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(q, fontSize = 12.sp, color = scheme.onSurface, maxLines = 2)
+                        Text("ينتقل إلى $t", fontSize = 10.sp, color = scheme.onSurfaceVariant)
                     }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlayerVisual(scheme: androidx.compose.material3.ColorScheme) {
+    Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(12.dp))) {
+            Image(painterResource(ChannelArt.covers[1]), null,
+                contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            Box(Modifier.align(Alignment.Center).size(48.dp)
+                .background(Color.Black.copy(alpha = 0.5f), CircleShape), Alignment.Center) {
+                Icon(Icons.Default.PlayArrow, null, tint = Color.White, modifier = Modifier.size(30.dp))
+            }
+            Surface(color = Color.Black.copy(alpha = 0.6f), shape = RoundedCornerShape(4.dp),
+                modifier = Modifier.align(Alignment.BottomEnd).padding(6.dp)) {
+                Text("CC", fontSize = 9.sp, color = Color.White,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        listOf("00:00:12" to "الحمد لله والصلاة والسلام على رسول الله…",
+            "00:00:31" to "أما بعد، فإن أصدق الحديث كتاب الله…",
+            "00:01:04" to "وخير الهدي هدي محمد صلى الله عليه وسلم…").forEach { (t, s) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                Text(t, fontSize = 10.sp, color = scheme.primary, modifier = Modifier.width(52.dp))
+                Text(s, fontSize = 11.sp, color = scheme.onSurfaceVariant,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowseVisual(channels: List<ChannelItem>, scheme: androidx.compose.material3.ColorScheme) {
+    val teasers = if (channels.isEmpty()) fallbackTeasers else channels.map {
+        ChannelTeaser(it.title, "${it.count} مقطع", ChannelArt.iconFor(it.title), it.avatar)
+    }
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        CoverMosaic()
+        Spacer(Modifier.height(12.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            teasers.take(4).forEach { ch ->
+                if (ch.avatar != null) ChannelAvatar(ch.avatar, 38)
+                else Image(painterResource(ch.iconRes), null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.size(38.dp).clip(CircleShape))
             }
         }
     }
@@ -214,15 +349,12 @@ private fun ImportPage(
     importing: Boolean,
     done: Boolean,
     onImport: () -> Unit,
-    onStart: () -> Unit,
     scheme: androidx.compose.material3.ColorScheme
 ) {
-    OnboardingScaffold(
-        scheme = scheme,
-        buttonText = "البَدأ",
-        buttonEnabled = done && !importing,
-        onClick = onStart,
-        center = true
+    Column(
+        Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
         when {
             importing -> ImportBusyContent(scheme)

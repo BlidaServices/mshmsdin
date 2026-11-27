@@ -124,7 +124,6 @@ private fun CaptionAppRoot() {
             if (error == null) {
                 version++
                 importDone = true
-                if (onboardingStep == 1) onboardingStep = 2
                 Toast.makeText(context, "تم", Toast.LENGTH_SHORT).show()
             } else {
                 Toast.makeText(context, error, Toast.LENGTH_LONG).show()
@@ -147,9 +146,9 @@ private fun CaptionAppRoot() {
                 step = onboardingStep,
                 importing = importing,
                 importDone = importDone,
-                onNext = { onboardingStep = 1 },
                 onImport = { importer.launch(arrayOf("*/*")) },
                 onStart = {
+                    onboardingStep = 2
                     prefs.edit().putBoolean("onboarding_done", true).apply()
                     onboardingFinished = true
                 }
