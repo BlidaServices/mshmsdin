@@ -4,30 +4,57 @@
 <meta charset="utf-8">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:transparent}
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
 #yt{width:100%;height:100%;border:0;display:block}
 </style>
 </head>
 <body>
-<iframe id="yt" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
+<div id="yt"></div>
 <script>
 var params = new URLSearchParams(location.search);
 var videoId = params.get('v') || '';
 var startSec = parseInt(params.get('start') || '0', 10) || 0;
 var playerOrigin = params.get('origin') || location.origin;
-var iframe = document.getElementById('yt');
-var base = 'https://www.youtube.com/embed/' + encodeURIComponent(videoId);
-iframe.src = base + '?start=' + startSec + '&autoplay=0&controls=1&autohide=0&playsinline=1&rel=0&enablejsapi=1&fs=1&origin=' + encodeURIComponent(playerOrigin) + '&widget_referrer=' + encodeURIComponent(playerOrigin);
-window.seekTo = function(sec) {
-  iframe.contentWindow.postMessage(JSON.stringify({event:'command', func:'seekTo', args:[sec, true]}), '*');
+var player = null;
+
+function onYouTubeIframeAPIReady() {
+  player = new YT.Player('yt', {
+    width: '100%', height: '100%',
+    playerVars: {
+      start: startSec, autoplay: 0, controls: 0, playsinline: 1,
+      rel: 0, enablejsapi: 1, origin: playerOrigin, modestbranding: 1, fs: 0
+    },
+    events: {
+      onReady: function () {
+        if (window.AndroidError && AndroidError.onReady) AndroidError.onReady();
+      },
+      onError: function (e) {
+        if (window.AndroidError && AndroidError.onError) AndroidError.onError(e.data);
+      }
+    }
+  });
+  window.player = player;
+}
+
+window.seekTo = function (sec) {
+  if (player && player.seekTo) player.seekTo(sec, true);
 };
-window.addEventListener('message', function(e) {
-  try {
-    var d = JSON.parse(e.data);
-    if (d.event === 'onReady' && window.AndroidError) window.AndroidError.onReady();
-    if (d.event === 'error' && window.AndroidError) window.AndroidError.onError(d.data);
-  } catch (_) {}
-});
+window.playPause = function () {
+  if (!player || !player.getPlayerState) return;
+  if (player.getPlayerState() === 1) player.pauseVideo(); else player.playVideo();
+};
+
+setInterval(function () {
+  if (!player || !player.getCurrentTime) return;
+  var s = player.getCurrentTime() || 0;
+  var d = (player.getDuration && player.getDuration()) || 0;
+  var st = (player.getPlayerState && player.getPlayerState()) || -1;
+  if (window.AndroidPlayer && AndroidPlayer.onTime) AndroidPlayer.onTime(s, d, st);
+}, 400);
+
+var tag = document.createElement('script');
+tag.src = 'https://www.youtube.com/iframe_api';
+document.head.appendChild(tag);
 </script>
 </body>
 </html>

@@ -20,8 +20,12 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -77,12 +81,19 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -95,6 +106,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -103,6 +117,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -813,6 +828,12 @@ fun VideoView(
     var cues by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.Cue>>(emptyList()) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var playerReady by remember(item.id) { mutableStateOf(false) }
+    var playing by remember(item.id) { mutableStateOf(false) }
+    var bridgeAlive by remember(item.id) { mutableStateOf(false) }
+    var jsDuration by remember(item.id) { mutableFloatStateOf(0f) }
+    var position by remember(item.id) { mutableFloatStateOf(start.toFloat()) }
+    var scrub by remember(item.id) { mutableStateOf<Float?>(null) }
+    var follow by remember(item.id) { mutableStateOf(true) }
     var inQuery by remember(item.id) { mutableStateOf("") }
     var descExpanded by remember(item.id) { mutableStateOf(false) }
     var chaptersOpen by remember(item.id) { mutableStateOf(false) }
@@ -826,12 +847,43 @@ fun VideoView(
         cues = data.second
     }
 
-    LaunchedEffect(highlight, start, cues) {
-        if (highlight.isNullOrBlank() && start == 0) return@LaunchedEffect
-        val idx = cues.indexOfFirst { secondsOf(it.startTime) == start }
-            .takeIf { it >= 0 }
-            ?: cues.indices.minByOrNull { kotlin.math.abs(secondsOf(cues[it].startTime) - start) } ?: -1
-        if (idx >= 0) cueListState.animateScrollToItem(idx)
+    val duration = remember(item.duration, cues, jsDuration) {
+        when {
+            jsDuration > 1f -> jsDuration
+            durationSeconds(item.duration) > 0 -> durationSeconds(item.duration).toFloat()
+            cues.isNotEmpty() -> secondsOf(cues.last().startTime) + 90f
+            else -> 1f
+        }.coerceAtLeast(1f)
+    }
+    val activeCueIdx = remember(cues, position) {
+        if (cues.isEmpty()) -1
+        else cues.indexOfLast { secondsOf(it.startTime) <= position.toInt() }
+    }
+    val activeChapterIdx = remember(chapters, position) {
+        if (chapters.isEmpty()) -1
+        else chapters.indexOfLast { secondsOf(it.start) <= position.toInt() }
+    }
+
+    fun js(code: String) { webView?.evaluateJavascript(code, null) }
+
+    val seek: (Int) -> Unit = { sec ->
+        position = sec.toFloat()
+        follow = true
+        onTime(sec)
+        js("window.seekTo($sec);")
+    }
+
+    val listDragged by cueListState.interactionSource.collectIsDraggedAsState()
+    LaunchedEffect(listDragged) { if (listDragged) follow = false }
+    LaunchedEffect(activeCueIdx, follow) {
+        if (follow && activeCueIdx >= 0) cueListState.animateScrollToItem(activeCueIdx)
+    }
+    LaunchedEffect(playing, bridgeAlive) {
+        if (!playing || bridgeAlive) return@LaunchedEffect
+        while (true) {
+            delay(500)
+            if (scrub == null) position = (position + 0.5f).coerceAtMost(duration)
+        }
     }
 
     val inHits = remember(inQuery, cues) {
@@ -841,10 +893,6 @@ fun VideoView(
             .map { LocalHit(it.text, it.startTime, "") }
     }
 
-    val seek: (Int) -> Unit = { sec ->
-        onTime(sec)
-        webView?.evaluateJavascript("window.seekTo($sec);", null)
-    }
 
     val openYoutube = {
         val intent = Intent(Intent.ACTION_VIEW,
@@ -895,9 +943,20 @@ fun VideoView(
                                         }
                                         @JavascriptInterface
                                         fun onReady() {
-                                            post { playerReady = true }
+                                            post { playerReady = true; playing = true }
                                         }
                                     }, "AndroidError")
+                                    addJavascriptInterface(object {
+                                        @JavascriptInterface
+                                        fun onTime(sec: Double, dur: Double, state: Int) {
+                                            post {
+                                                bridgeAlive = true
+                                                if (dur > 1.0) jsDuration = dur.toFloat()
+                                                playing = state == 1 || state == 3
+                                                if (scrub == null) position = sec.toFloat()
+                                            }
+                                        }
+                                    }, "AndroidPlayer")
                                     loadUrl(playerUrl)
                                     webView = this
                                 }
@@ -910,27 +969,60 @@ fun VideoView(
                                 wv.destroy()
                             }
                         )
-                        if (!playerReady) {
-                            Box(Modifier.fillMaxSize().background(Color.Black)) {
-                                Thumbnail(item.thumb, Modifier.fillMaxSize())
-                                Box(Modifier.align(Alignment.Center).size(56.dp)
-                                    .background(Color.Black.copy(alpha = 0.55f), CircleShape),
-                                    contentAlignment = Alignment.Center) {
-                                    Icon(Icons.Default.PlayArrow, null, tint = Color.White,
-                                        modifier = Modifier.size(36.dp))
-                                }
-                            }
-                        }
                         DisposableEffect(item.id) {
                             onDispose { webView?.onPause() }
                         }
                     }
-                } else {
-                    Thumbnail(item.thumb, Modifier.fillMaxSize())
                 }
+                Thumbnail(item.thumb, Modifier.fillMaxSize())
+                Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.15f)))
+
+                if (online) {
+                    Box(
+                        Modifier.align(Alignment.Center).size(66.dp).clip(CircleShape)
+                            .background(Color.Black.copy(alpha = if (playing) 0.30f else 0.55f))
+                            .clickable {
+                                if (!playerReady) return@clickable
+                                playing = !playing
+                                js("window.playPause && window.playPause();")
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (playing) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Box(Modifier.size(5.dp, 24.dp).background(Color.White, RoundedCornerShape(1.5.dp)))
+                                Box(Modifier.size(5.dp, 24.dp).background(Color.White, RoundedCornerShape(1.5.dp)))
+                            }
+                        } else {
+                            Icon(Icons.Default.PlayArrow, "تشغيل", tint = Color.White,
+                                modifier = Modifier.size(38.dp))
+                        }
+                    }
+                }
+
+                Column(
+                    Modifier.align(Alignment.BottomCenter).fillMaxWidth()
+                        .background(Brush.verticalGradient(
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.80f))))
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    ChapterSeekBar(
+                        position = position,
+                        duration = duration,
+                        chapters = chapters,
+                        title = item.title,
+                        onScrub = { scrub = it },
+                        onCommit = { sec ->
+                            scrub = null
+                            seek(sec.toInt())
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+
                 if (chapters.isNotEmpty()) {
                     Row(
-                        Modifier.align(Alignment.BottomStart).padding(10.dp)
+                        Modifier.align(Alignment.TopEnd).padding(10.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .background(Color.Black.copy(alpha = 0.65f))
                             .clickable { chaptersOpen = true }
@@ -1042,10 +1134,10 @@ fun VideoView(
                         Text("لا يوجد نص", fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                    items(cues, key = { it.rowId }) { cue ->
-                        val matched = (!highlight.isNullOrBlank() &&
-                            cue.text.contains(highlight, ignoreCase = true)) ||
-                            secondsOf(cue.startTime) == start
+                    itemsIndexed(cues, key = { _, cue -> cue.rowId }) { i, cue ->
+                        val matched = i == activeCueIdx ||
+                            (!highlight.isNullOrBlank() &&
+                                cue.text.contains(highlight, ignoreCase = true))
                         Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(cue.startTime)) }
                             .background(if (matched) MaterialTheme.colorScheme.primaryContainer
                                         else Color.Transparent)
@@ -1065,9 +1157,7 @@ fun VideoView(
 
             if (chaptersOpen && chapters.isNotEmpty()) {
                 val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                val activeIdx = remember(chapters, start) {
-                    chapters.indexOfLast { secondsOf(it.start) <= start }
-                }
+                val activeIdx = activeChapterIdx
                 ModalBottomSheet(
                     onDismissRequest = { chaptersOpen = false },
                     sheetState = sheetState,
@@ -1113,4 +1203,136 @@ fun VideoView(
             }
         }
     }
+}
+
+@Composable
+private fun ChapterSeekBar(
+    position: Float,
+    duration: Float,
+    chapters: List<com.mshmsdin.captionsearch.data.ChapterItem>,
+    title: String,
+    onScrub: (Float) -> Unit,
+    onCommit: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = Color.White
+) {
+    val measurer = rememberTextMeasurer()
+    var widthPx by remember { mutableFloatStateOf(1f) }
+    var dragging by remember { mutableStateOf(false) }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    val dur = duration.coerceAtLeast(1f)
+    val frac = (if (dragging) dragX / widthPx else position / dur).coerceIn(0f, 1f)
+    val nowSec = (frac * dur).toInt()
+
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                chapters.lastOrNull { secondsOf(it.start) <= nowSec }?.title ?: title,
+                fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color.White,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text("${fmtClock(nowSec)} / ${fmtClock(duration.toInt())}",
+                fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 8.dp))
+        }
+        Canvas(
+            Modifier.fillMaxWidth().height(46.dp)
+                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(dur) {
+                    detectTapGestures { o ->
+                        onCommit((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                    }
+                }
+                .pointerInput(dur) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { o ->
+                            dragging = true
+                            dragX = o.x
+                            onScrub((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragX = change.position.x
+                            onScrub((change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onDragEnd = {
+                            dragging = false
+                            onCommit((dragX / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onDragCancel = { dragging = false }
+                    )
+                }
+        ) {
+            val barY = size.height - 11.dp.toPx()
+            val barH = 4.dp.toPx()
+            val rad = CornerRadius(barH / 2f)
+            drawRoundRect(Color.White.copy(alpha = 0.30f),
+                Offset(0f, barY - barH / 2), Size(size.width, barH), rad)
+            drawRoundRect(accent,
+                Offset(0f, barY - barH / 2), Size(size.width * frac, barH), rad)
+
+            chapters.forEachIndexed { i, ch ->
+                val cs = secondsOf(ch.start).toFloat() / dur * size.width
+                val next = chapters.getOrNull(i + 1)
+                    ?.let { secondsOf(it.start).toFloat() / dur * size.width } ?: size.width
+                if (i > 0) drawLine(
+                    Color.White.copy(alpha = 0.9f),
+                    Offset(cs, barY - barH / 2 - 5.dp.toPx()),
+                    Offset(cs, barY + barH / 2 + 5.dp.toPx()),
+                    1.5.dp.toPx()
+                )
+                val segW = next - cs
+                if (segW > 44.dp.toPx()) {
+                    val laid = measurer.measure(
+                        AnnotatedString(ch.title),
+                        style = TextStyle(fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.78f)),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        constraints = Constraints(
+                            maxWidth = (segW - 8.dp.toPx()).toInt().coerceAtLeast(1))
+                    )
+                    clipRect(cs + 2.dp.toPx(), 0f, next - 2.dp.toPx(), size.height) {
+                        drawText(laid, topLeft = Offset(cs + 3.dp.toPx(), 0f))
+                    }
+                }
+            }
+            drawCircle(Color.White, 7.dp.toPx(), Offset(size.width * frac, barY))
+            drawCircle(accent, 4.dp.toPx(), Offset(size.width * frac, barY))
+            if (dragging) {
+                val bubble = measurer.measure(
+                    AnnotatedString(fmtClock(nowSec)),
+                    style = TextStyle(fontSize = 11.sp, color = Color.Black,
+                        fontWeight = FontWeight.Bold)
+                )
+                val bw = bubble.size.width + 14.dp.toPx()
+                val bh = bubble.size.height + 6.dp.toPx()
+                val bx = (size.width * frac - bw / 2).coerceIn(0f, size.width - bw)
+                drawRoundRect(Color.White, Offset(bx, barY - bh - 14.dp.toPx()),
+                    Size(bw, bh), CornerRadius(6.dp.toPx()))
+                drawText(bubble,
+                    topLeft = Offset(bx + 7.dp.toPx(), barY - bh - 14.dp.toPx() + 3.dp.toPx()))
+            }
+        }
+    }
+}
+
+private fun durationSeconds(text: String): Int {
+    val p = text.split(':').mapNotNull { it.trim().toIntOrNull() }
+    return when (p.size) {
+        3 -> p[0] * 3600 + p[1] * 60 + p[2]
+        2 -> p[0] * 60 + p[1]
+        1 -> p[0]
+        else -> 0
+    }
+}
+
+private fun fmtClock(sec: Int): String {
+    val s = sec.coerceAtLeast(0)
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val r = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%02d:%02d".format(m, r)
 }
