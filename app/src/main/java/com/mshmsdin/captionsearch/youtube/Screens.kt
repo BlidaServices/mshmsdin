@@ -13,6 +13,13 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,11 +36,13 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -44,6 +53,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -56,11 +66,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.PrimaryTabRow
-import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -800,24 +809,19 @@ fun VideoView(
     val online = remember(item.id) { isOnline(context) }
     var chapters by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.ChapterItem>>(emptyList()) }
     var cues by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.Cue>>(emptyList()) }
-    var questions by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.QuestionHit>>(emptyList()) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var playerReady by remember(item.id) { mutableStateOf(false) }
-    var detailTab by remember(item.id) { mutableStateOf("captions") }
     var inQuery by remember(item.id) { mutableStateOf("") }
+    var descExpanded by remember(item.id) { mutableStateOf(false) }
+    var chaptersOpen by remember(item.id) { mutableStateOf(false) }
     val cueListState = rememberLazyListState()
 
     LaunchedEffect(item.rowId) {
         val data = withContext(Dispatchers.IO) {
-            Triple(
-                repository.chaptersOf(item.rowId),
-                repository.cuesOf(item.rowId),
-                repository.questionsOf(item.id)
-            )
+            repository.chaptersOf(item.rowId) to repository.cuesOf(item.rowId)
         }
         chapters = data.first
         cues = data.second
-        questions = data.third
     }
 
     LaunchedEffect(highlight, start, cues) {
@@ -828,21 +832,11 @@ fun VideoView(
         if (idx >= 0) cueListState.animateScrollToItem(idx)
     }
 
-    val inHits = remember(inQuery, cues, chapters, questions, item.description) {
-        if (inQuery.isBlank()) emptyList() else buildList {
-            questions.forEach {
-                if (it.text.contains(inQuery, true)) add(LocalHit(it.text, it.start, "سؤال"))
-            }
-            cues.forEach {
-                if (it.text.contains(inQuery, true)) add(LocalHit(it.text, it.startTime, "النص"))
-            }
-            chapters.forEach {
-                if (it.title.contains(inQuery, true)) add(LocalHit(it.title, it.start, "الفصول"))
-            }
-            item.description.lines().forEach { line ->
-                if (line.contains(inQuery, true)) add(LocalHit(line.trim(), "", "الوصف"))
-            }
-        }.take(40)
+    val inHits = remember(inQuery, cues) {
+        if (inQuery.isBlank()) emptyList()
+        else cues.filter { it.text.contains(inQuery, ignoreCase = true) }
+            .take(60)
+            .map { LocalHit(it.text, it.startTime, "") }
     }
 
     val seek: (Int) -> Unit = { sec ->
@@ -932,40 +926,68 @@ fun VideoView(
                 } else {
                     Thumbnail(item.thumb, Modifier.fillMaxSize())
                 }
+                if (chapters.isNotEmpty()) {
+                    Row(
+                        Modifier.align(Alignment.BottomStart).padding(10.dp)
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(Color.Black.copy(alpha = 0.65f))
+                            .clickable { chaptersOpen = true }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(YouTubeIcons.PlaylistOutlined, null, tint = Color.White,
+                            modifier = Modifier.size(16.dp))
+                        Spacer(Modifier.width(6.dp))
+                        Text("الفصول ${chapters.size}", fontSize = 12.sp,
+                            fontWeight = FontWeight.Medium, color = Color.White)
+                    }
+                }
             }
-            Column(Modifier.padding(14.dp)) {
-                Text(item.title, style = MaterialTheme.typography.titleMedium)
-                Spacer(Modifier.height(8.dp))
+            Column(Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp)) {
+                Text(item.title, style = MaterialTheme.typography.titleMedium,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text(dateTimeLabel(item.publishedAt.ifBlank { item.date }, item.duration),
+                        fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f))
+                    val rot by animateFloatAsState(
+                        targetValue = if (descExpanded) 180f else 0f,
+                        animationSpec = tween(200), label = "chevron"
+                    )
+                    Box(Modifier.size(32.dp).clip(CircleShape)
+                        .clickable { descExpanded = !descExpanded },
+                        contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.KeyboardArrowDown,
+                            contentDescription = if (descExpanded) "إخفاء الوصف" else "عرض الوصف",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(22.dp).graphicsLayer { rotationZ = rot })
+                    }
+                }
+                AnimatedVisibility(
+                    visible = descExpanded,
+                    enter = expandVertically(tween(220)) + fadeIn(tween(220)),
+                    exit = shrinkVertically(tween(180)) + fadeOut(tween(120))
+                ) {
+                    Text(item.description.ifBlank { "لا يوجد وصف" }, fontSize = 13.sp,
+                        lineHeight = 20.sp, color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
+                }
+                Spacer(Modifier.height(10.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     ChannelAvatar(item.avatar, 34)
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(item.channel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        Text(dateTimeLabel(item.publishedAt.ifBlank { item.date }, item.duration),
-                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = openYoutube) { Text("يوتيوب") }
                 }
-                Spacer(Modifier.height(12.dp))
-                val detailTabs = listOf("captions" to "النص", "chapters" to "الفصول", "desc" to "الوصف")
-                PrimaryTabRow(
-                    selectedTabIndex = detailTabs.indexOfFirst { it.first == detailTab }.coerceAtLeast(0),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
-                ) {
-                    detailTabs.forEach { (v, l) ->
-                        Tab(
-                            selected = detailTab == v,
-                            onClick = { detailTab = v },
-                            text = { Text(l, maxLines = 1) }
-                        )
-                    }
-                }
-            }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 TextField(
                     value = inQuery,
                     onValueChange = { inQuery = it },
-                    placeholder = { Text("ابحث في النص والفصول والوصف والأسئلة", fontSize = 12.sp) },
+                    placeholder = { Text("ابحث في نص المقطع فقط", fontSize = 12.sp) },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {}),
@@ -978,85 +1000,112 @@ fun VideoView(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
             if (inQuery.isNotBlank()) {
                 LazyColumn(
                     Modifier.weight(1f),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     item {
-                        Text("نتائج البحث (${inHits.size})", fontSize = 12.sp,
+                        Text("نتائج في النص (${inHits.size})", fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(bottom = 6.dp))
                     }
                     if (inHits.isEmpty()) item {
-                        Text("لا توجد نتائج", fontSize = 13.sp,
+                        Text("لا توجد نتائج في نص هذا المقطع", fontSize = 13.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(16.dp))
                     }
                     items(inHits) { hit ->
-                        Row(Modifier.fillMaxWidth().clickable {
-                            if (hit.start.isNotBlank()) seek(secondsOf(hit.start))
-                        }.padding(vertical = 7.dp)) {
-                            Text(hit.kind, fontSize = 10.sp,
+                        Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(hit.start)) }
+                            .padding(horizontal = 6.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.Top) {
+                            Text(timeText(hit.start), fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.width(54.dp))
-                            HighlightedText(hit.text, inQuery, fontSize = 12.sp, maxLines = 3,
-                                modifier = Modifier.weight(1f))
-                            if (hit.start.isNotBlank()) Text(timeText(hit.start), fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(start = 6.dp))
+                                modifier = Modifier.width(64.dp))
+                            HighlightedText(hit.text, inQuery, fontSize = 13.sp,
+                                maxLines = 3, modifier = Modifier.weight(1f))
                         }
                         HorizontalDivider()
                     }
                 }
             } else {
-                Box(Modifier.weight(1f)) {
-                    when (detailTab) {
-                        "desc" -> Column(
-                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                                .padding(horizontal = 14.dp, vertical = 12.dp)
-                        ) {
-                            Text(item.description.ifBlank { "لا يوجد وصف" }, fontSize = 13.sp)
+                LazyColumn(
+                    Modifier.weight(1f),
+                    state = cueListState,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                ) {
+                    if (cues.isEmpty()) item {
+                        Text("لا يوجد نص", fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    items(cues, key = { it.rowId }) { cue ->
+                        val matched = (!highlight.isNullOrBlank() &&
+                            cue.text.contains(highlight, ignoreCase = true)) ||
+                            secondsOf(cue.startTime) == start
+                        Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(cue.startTime)) }
+                            .background(if (matched) MaterialTheme.colorScheme.primaryContainer
+                                        else Color.Transparent)
+                            .padding(horizontal = 6.dp, vertical = 6.dp)) {
+                            Text(timeText(cue.startTime),
+                                color = if (matched) MaterialTheme.colorScheme.onPrimaryContainer
+                                        else MaterialTheme.colorScheme.primary,
+                                fontSize = 12.sp, modifier = Modifier.width(68.dp))
+                            if (matched) HighlightedText(cue.text, highlight ?: inQuery,
+                                fontSize = 13.sp, maxLines = Int.MAX_VALUE,
+                                modifier = Modifier.weight(1f))
+                            else Text(cue.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
                         }
-                        "chapters" -> LazyColumn(
-                            Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                        ) {
-                            if (chapters.isEmpty()) item { Text("لا توجد فصول", fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            items(chapters, key = { it.start + it.title }) { ch ->
-                                Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(ch.start)) }
-                                    .padding(vertical = 7.dp)) {
-                                    Text(timeText(ch.start), color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 12.sp, modifier = Modifier.width(68.dp))
-                                    Text(ch.title, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+
+            if (chaptersOpen && chapters.isNotEmpty()) {
+                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+                val activeIdx = remember(chapters, start) {
+                    chapters.indexOfLast { secondsOf(it.start) <= start }
+                }
+                ModalBottomSheet(
+                    onDismissRequest = { chaptersOpen = false },
+                    sheetState = sheetState,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                        Text("الفصول", style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(bottom = 10.dp))
+                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
+                            itemsIndexed(chapters, key = { _, ch -> ch.start + ch.title }) { idx, ch ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                                    .clickable {
+                                        chaptersOpen = false
+                                        seek(secondsOf(ch.start))
+                                    }
+                                    .padding(vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically) {
+                                    Thumbnail(item.thumb,
+                                        Modifier.width(112.dp).aspectRatio(16f / 9f)
+                                            .clip(RoundedCornerShape(8.dp)))
+                                    Spacer(Modifier.width(12.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(ch.title, fontSize = 13.sp,
+                                            fontWeight = if (idx == activeIdx) FontWeight.SemiBold
+                                                         else FontWeight.Normal,
+                                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                                            color = MaterialTheme.colorScheme.onSurface)
+                                        Spacer(Modifier.height(2.dp))
+                                        Text(timeText(ch.start), fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    if (idx == activeIdx) {
+                                        Icon(Icons.Default.PlayArrow, null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(18.dp))
+                                    }
                                 }
                             }
                         }
-                        else -> LazyColumn(
-                            Modifier.fillMaxSize(),
-                            state = cueListState,
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                        ) {
-                            if (cues.isEmpty()) item { Text("لا يوجد نص", fontSize = 13.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            items(cues, key = { it.rowId }) { cue ->
-                                val matched = (!highlight.isNullOrBlank() &&
-                                    cue.text.contains(highlight, ignoreCase = true)) ||
-                                    secondsOf(cue.startTime) == start
-                                Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(cue.startTime)) }
-                                    .background(if (matched) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                    .padding(horizontal = 6.dp, vertical = 6.dp)) {
-                                    Text(timeText(cue.startTime),
-                                        color = if (matched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
-                                        fontSize = 12.sp, modifier = Modifier.width(68.dp))
-                                    if (matched) HighlightedText(cue.text, highlight ?: inQuery,
-                                        fontSize = 13.sp, maxLines = Int.MAX_VALUE,
-                                        modifier = Modifier.weight(1f))
-                                    else Text(cue.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
-                                }
-                            }
-                        }
+                        Spacer(Modifier.height(20.dp))
                     }
                 }
             }
