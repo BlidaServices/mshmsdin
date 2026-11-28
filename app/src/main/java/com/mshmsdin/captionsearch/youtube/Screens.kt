@@ -1182,14 +1182,13 @@ fun VideoView(
                                         Thumbnail(item.thumb,
                                             Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)))
                                         Box(
-                                            Modifier.align(Alignment.BottomEnd).padding(4.dp)
-                                                .size(24.dp).clip(RoundedCornerShape(4.dp))
-                                                .background(Color.Black.copy(alpha = 0.6f))
+                                            Modifier.align(Alignment.Center)
+                                                .clip(RoundedCornerShape(6.dp))
                                                 .clickable { openYoutubeAt(secondsOf(ch.start)) },
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(YouTubeIcons.YouTube, "فتح في يوتيوب",
-                                                modifier = Modifier.size(15.dp))
+                                                modifier = Modifier.size(46.dp, 32.dp))
                                         }
                                     }
                                     Spacer(Modifier.width(12.dp))
