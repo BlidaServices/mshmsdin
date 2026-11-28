@@ -37,6 +37,17 @@ object YouTubeIcons {
     fun lockup(wordmark: Color = Color.White): ImageVector =
         cache.getOrPut("yt_lockup_$wordmark") { buildLockup(wordmark) }
 
+    val YouTube: ImageVector get() = cache.getOrPut("yt_standalone") {
+        ImageVector.Builder("yt_standalone", 29.dp, 20.dp, 29f, 20f).apply {
+            addPath(
+                pathData = addPathNodes("M14.4848 20C14.4848 20 23.5695 20 25.8229 19.4C27.0917 19.06 28.0459 18.08 28.3808 16.87C29 14.65 29 9.98 29 9.98C29 9.98 29 5.34 28.3808 3.14C28.0459 1.9 27.0917 0.94 25.8229 0.61C23.5695 0 14.4848 0 14.4848 0C14.4848 0 5.42037 0 3.17711 0.61C1.9286 0.94 0.954148 1.9 0.59888 3.14C0 5.34 0 9.98 0 9.98C0 9.98 0 14.65 0.59888 16.87C0.954148 18.08 1.9286 19.06 3.17711 19.4C5.42037 20 14.4848 20 14.4848 20Z"),
+                fill = SolidColor(Color(0xFFFF0033))
+            )
+            addPath(pathData = addPathNodes("M19 10L11.5 5.75V14.25L19 10Z"),
+                fill = SolidColor(Color.White))
+        }.build()
+    }
+
     val Caption: ImageVector get() = make("caption", """M19 4H5c-1.11 0-2 .9-2 2v12c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm-8 7H9.5v-.5h2.5v-1H10c-.83 0-1.5-.67-1.5-1.5S9.17 6.5 10 6.5h3c.83 0 1.5.67 1.5 1.5S13.83 9.5 13 9.5h-2v1h2.5v.5H11zm8 6.5c0 .83-.67 1.5-1.5 1.5S16 18.33 16 17.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5zm-4-3c0 .83-.67 1.5-1.5 1.5S13 16.33 13 15.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5z""")
 
     val HomeFilled: ImageVector get() = make("home_fill", """m11.485 2.143-8 4.8-2 1.2a1 1 0 001.03 1.714L3 9.567V20a2 2 0 002 2h5v-8h4v8h5a2 2 0 002-2V9.567l.485.29a1 1 0 001.03-1.714l-2-1.2-8-4.8a1 1 0 00-1.03 0Z""")

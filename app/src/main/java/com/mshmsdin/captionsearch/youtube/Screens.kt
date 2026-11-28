@@ -895,11 +895,13 @@ fun VideoView(
     }
 
 
-    val openYoutube = {
+    fun openYoutubeAt(sec: Int) {
         val intent = Intent(Intent.ACTION_VIEW,
-            android.net.Uri.parse("https://www.youtube.com/watch?v=${item.id}&t=${start}s"))
+            android.net.Uri.parse("https://www.youtube.com/watch?v=${item.id}&t=${sec}s"))
         context.startActivity(Intent.createChooser(intent, "YouTube"))
     }
+
+    val openYoutube = { openYoutubeAt(start) }
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
@@ -1176,9 +1178,20 @@ fun VideoView(
                                     }
                                     .padding(vertical = 6.dp),
                                     verticalAlignment = Alignment.CenterVertically) {
-                                    Thumbnail(item.thumb,
-                                        Modifier.width(112.dp).aspectRatio(16f / 9f)
-                                            .clip(RoundedCornerShape(8.dp)))
+                                    Box(Modifier.width(112.dp).aspectRatio(16f / 9f)) {
+                                        Thumbnail(item.thumb,
+                                            Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)))
+                                        Box(
+                                            Modifier.align(Alignment.BottomEnd).padding(4.dp)
+                                                .size(24.dp).clip(RoundedCornerShape(4.dp))
+                                                .background(Color.Black.copy(alpha = 0.6f))
+                                                .clickable { openYoutubeAt(secondsOf(ch.start)) },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Icon(YouTubeIcons.YouTube, "فتح في يوتيوب",
+                                                modifier = Modifier.size(15.dp))
+                                        }
+                                    }
                                     Spacer(Modifier.width(12.dp))
                                     Column(Modifier.weight(1f)) {
                                         Text(ch.title, fontSize = 13.sp,
