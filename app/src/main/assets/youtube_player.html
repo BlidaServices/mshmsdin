@@ -9,52 +9,67 @@ html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#
 </style>
 </head>
 <body>
-<div id="yt"></div>
+<iframe id="yt" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen></iframe>
 <script>
 var params = new URLSearchParams(location.search);
 var videoId = params.get('v') || '';
 var startSec = parseInt(params.get('start') || '0', 10) || 0;
 var playerOrigin = params.get('origin') || location.origin;
-var player = null;
+var frame = document.getElementById('yt');
+frame.src = 'https://www.youtube.com/embed/' + encodeURIComponent(videoId) +
+  '?start=' + startSec + '&autoplay=0&controls=1&autohide=0&playsinline=1&rel=0' +
+  '&enablejsapi=1&fs=1&origin=' + encodeURIComponent(playerOrigin) +
+  '&widget_referrer=' + encodeURIComponent(playerOrigin);
 
-function onYouTubeIframeAPIReady() {
-  player = new YT.Player('yt', {
-    width: '100%', height: '100%',
-    playerVars: {
-      start: startSec, autoplay: 0, controls: 0, playsinline: 1,
-      rel: 0, enablejsapi: 1, origin: playerOrigin, modestbranding: 1, fs: 0
-    },
-    events: {
-      onReady: function () {
-        if (window.AndroidError && AndroidError.onReady) AndroidError.onReady();
-      },
-      onError: function (e) {
-        if (window.AndroidError && AndroidError.onError) AndroidError.onError(e.data);
-      }
-    }
-  });
-  window.player = player;
+var MSG_ID = 1;
+var info = {};
+var ready = false;
+
+function send(event, func, args) {
+  try {
+    frame.contentWindow.postMessage(JSON.stringify({
+      id: MSG_ID, channel: 'widget', event: event, func: func, args: args
+    }), '*');
+  } catch (_) {}
 }
 
+addEventListener('message', function (e) {
+  var host = '';
+  try { host = new URL(e.origin).hostname; } catch (_) {}
+  if (!/(^|\.)youtube(-nocookie)?\.com$/.test(host)) return;
+  var d;
+  try { d = JSON.parse(e.data); } catch (_) { return; }
+  if (d.event === 'initialDelivery' || d.event === 'infoDelivery') {
+    if (d.info) {
+      Object.assign(info, d.info);
+      if (window.AndroidPlayer && AndroidPlayer.onTime) {
+        AndroidPlayer.onTime(info.currentTime || 0, info.duration || 0,
+          (typeof info.playerState === 'number' ? info.playerState : -1));
+      }
+    }
+    if (!ready) {
+      ready = true;
+      if (window.AndroidError && AndroidError.onReady) AndroidError.onReady();
+    }
+  }
+  if (d.event === 'error' && window.AndroidError && AndroidError.onError) {
+    AndroidError.onError(d.data);
+  }
+});
+
+var handshake = setInterval(function () {
+  send('listening');
+  if (ready) clearInterval(handshake);
+}, 200);
+send('listening');
+
 window.seekTo = function (sec) {
-  if (player && player.seekTo) player.seekTo(sec, true);
+  send('command', 'seekTo', [sec, true]);
 };
 window.playPause = function () {
-  if (!player || !player.getPlayerState) return;
-  if (player.getPlayerState() === 1) player.pauseVideo(); else player.playVideo();
+  var st = (typeof info.playerState === 'number') ? info.playerState : -1;
+  send('command', (st === 1 ? 'pauseVideo' : 'playVideo'), []);
 };
-
-setInterval(function () {
-  if (!player || !player.getCurrentTime) return;
-  var s = player.getCurrentTime() || 0;
-  var d = (player.getDuration && player.getDuration()) || 0;
-  var st = (player.getPlayerState && player.getPlayerState()) || -1;
-  if (window.AndroidPlayer && AndroidPlayer.onTime) AndroidPlayer.onTime(s, d, st);
-}, 400);
-
-var tag = document.createElement('script');
-tag.src = 'https://www.youtube.com/iframe_api';
-document.head.appendChild(tag);
 </script>
 </body>
 </html>
