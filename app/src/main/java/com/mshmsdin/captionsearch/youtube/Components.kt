@@ -178,16 +178,16 @@ private fun ccBadgeVector(plate: Color, glyph: Color): ImageVector =
         addPath(pathData = addPathNodes(CC_GLYPH_LEFT), fill = SolidColor(glyph))
     }.build()
 
-private val CcBadgeOn by lazy { ccBadgeVector(Color.White, Color.Black) }
 private val CcBadgeOff by lazy {
     ccBadgeVector(Color(0xFF8E8E8E), Color(0xFFEDEDED))
 }
 
 @Composable
 fun CaptionBadge(hasCaptions: Boolean) {
+    if (hasCaptions) return
     Image(
-        imageVector = if (hasCaptions) CcBadgeOn else CcBadgeOff,
-        contentDescription = if (hasCaptions) "كابشن متوفر" else null,
+        imageVector = CcBadgeOff,
+        contentDescription = "بدون كابشن",
         contentScale = ContentScale.Fit,
         modifier = Modifier.size(30.dp, 23.dp)
     )
