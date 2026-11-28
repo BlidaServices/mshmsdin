@@ -1200,3 +1200,136 @@ fun VideoView(
         }
     }
 }
+
+@Composable
+private fun ChapterSeekBar(
+    position: Float,
+    duration: Float,
+    chapters: List<com.mshmsdin.captionsearch.data.ChapterItem>,
+    title: String,
+    onChaptersClick: () -> Unit,
+    onScrub: (Float) -> Unit,
+    onCommit: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    accent: Color = Color.White
+) {
+    val measurer = rememberTextMeasurer()
+    var widthPx by remember { mutableFloatStateOf(1f) }
+    var dragging by remember { mutableStateOf(false) }
+    var dragX by remember { mutableFloatStateOf(0f) }
+    val dur = duration.coerceAtLeast(1f)
+    val frac = (if (dragging) dragX / widthPx else position / dur).coerceIn(0f, 1f)
+    val nowSec = (frac * dur).toInt()
+
+    Column(modifier) {
+        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp)
+            .clickable(onClick = onChaptersClick),
+            verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                chapters.lastOrNull { secondsOf(it.start) <= nowSec }?.title ?: title,
+                fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color.White,
+                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text("${fmtClock(nowSec)} / ${fmtClock(duration.toInt())}",
+                fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
+                modifier = Modifier.padding(start = 8.dp))
+        }
+        Canvas(
+            Modifier.fillMaxWidth().height(46.dp)
+                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(dur) {
+                    detectTapGestures { o ->
+                        onCommit((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                    }
+                }
+                .pointerInput(dur) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { o ->
+                            dragging = true
+                            dragX = o.x
+                            onScrub((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onHorizontalDrag = { change, _ ->
+                            change.consume()
+                            dragX = change.position.x
+                            onScrub((change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onDragEnd = {
+                            dragging = false
+                            onCommit((dragX / size.width.toFloat()).coerceIn(0f, 1f) * dur)
+                        },
+                        onDragCancel = { dragging = false }
+                    )
+                }
+        ) {
+            val barY = size.height - 11.dp.toPx()
+            val barH = 4.dp.toPx()
+            val rad = CornerRadius(barH / 2f)
+            drawRoundRect(Color.White.copy(alpha = 0.30f),
+                Offset(0f, barY - barH / 2), Size(size.width, barH), rad)
+            drawRoundRect(accent,
+                Offset(0f, barY - barH / 2), Size(size.width * frac, barH), rad)
+            chapters.forEachIndexed { i, ch ->
+                val cs = secondsOf(ch.start).toFloat() / dur * size.width
+                val next = chapters.getOrNull(i + 1)
+                    ?.let { secondsOf(it.start).toFloat() / dur * size.width } ?: size.width
+                if (i > 0) drawLine(
+                    Color.White.copy(alpha = 0.9f),
+                    Offset(cs, barY - barH / 2 - 5.dp.toPx()),
+                    Offset(cs, barY + barH / 2 + 5.dp.toPx()),
+                    1.5.dp.toPx()
+                )
+                val segW = next - cs
+                if (segW > 44.dp.toPx()) {
+                    val laid = measurer.measure(
+                        AnnotatedString(ch.title),
+                        style = TextStyle(fontSize = 10.sp,
+                            color = Color.White.copy(alpha = 0.78f)),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        constraints = Constraints(
+                            maxWidth = (segW - 8.dp.toPx()).toInt().coerceAtLeast(1))
+                    )
+                    clipRect(cs + 2.dp.toPx(), 0f, next - 2.dp.toPx(), size.height) {
+                        drawText(laid, topLeft = Offset(cs + 3.dp.toPx(), 0f))
+                    }
+                }
+            }
+            drawCircle(Color.White, 7.dp.toPx(), Offset(size.width * frac, barY))
+            drawCircle(accent, 4.dp.toPx(), Offset(size.width * frac, barY))
+            if (dragging) {
+                val bubble = measurer.measure(
+                    AnnotatedString(fmtClock(nowSec)),
+                    style = TextStyle(fontSize = 11.sp, color = Color.Black,
+                        fontWeight = FontWeight.Bold)
+                )
+                val bw = bubble.size.width + 14.dp.toPx()
+                val bh = bubble.size.height + 6.dp.toPx()
+                val bx = (size.width * frac - bw / 2).coerceIn(0f, size.width - bw)
+                drawRoundRect(Color.White, Offset(bx, barY - bh - 14.dp.toPx()),
+                    Size(bw, bh), CornerRadius(6.dp.toPx()))
+                drawText(bubble,
+                    topLeft = Offset(bx + 7.dp.toPx(), barY - bh - 14.dp.toPx() + 3.dp.toPx()))
+            }
+        }
+    }
+}
+
+private fun durationSeconds(text: String): Int {
+    val p = text.split(':').mapNotNull { it.trim().toIntOrNull() }
+    return when (p.size) {
+        3 -> p[0] * 3600 + p[1] * 60 + p[2]
+        2 -> p[0] * 60 + p[1]
+        1 -> p[0]
+        else -> 0
+    }
+}
+
+private fun fmtClock(sec: Int): String {
+    val s = sec.coerceAtLeast(0)
+    val h = s / 3600
+    val m = (s % 3600) / 60
+    val r = s % 60
+    return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%02d:%02d".format(m, r)
+}
