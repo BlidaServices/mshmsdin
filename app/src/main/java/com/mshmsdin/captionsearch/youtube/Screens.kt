@@ -66,6 +66,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -901,8 +903,6 @@ fun VideoView(
         context.startActivity(Intent.createChooser(intent, "YouTube"))
     }
 
-    val openYoutube = { openYoutubeAt(start) }
-
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize()) {
             Box(Modifier.fillMaxWidth().aspectRatio(16f / 9f).clipToBounds().background(Color.Black)) {
@@ -980,6 +980,35 @@ fun VideoView(
                 Thumbnail(item.thumb, Modifier.fillMaxSize())
                 Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.15f)))
 
+                Row(
+                    Modifier.align(Alignment.TopStart).padding(10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ChannelAvatar(item.avatar, 30)
+                    Spacer(Modifier.width(8.dp))
+                    Text(item.channel, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                        color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                Row(
+                    Modifier.align(Alignment.TopEnd).padding(10.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.Black.copy(alpha = 0.62f))
+                        .padding(horizontal = 9.dp, vertical = 5.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(dateTimeLabel(item.publishedAt.ifBlank { item.date }, item.duration),
+                        fontSize = 11.sp, color = Color.White, maxLines = 1)
+                    Spacer(Modifier.width(6.dp))
+                    IconButton(onClick = { openYoutubeAt(position.toInt()) },
+                        modifier = Modifier.size(24.dp)) {
+                        Icon(YouTubeIcons.YouTube, "يوتيوب", tint = Color.Unspecified,
+                            modifier = Modifier.size(20.dp, 14.dp))
+                    }
+                }
+
                 if (online) {
                     Box(
                         Modifier.align(Alignment.Center).size(66.dp).clip(CircleShape)
@@ -1009,34 +1038,39 @@ fun VideoView(
                             listOf(Color.Transparent, Color.Black.copy(alpha = 0.80f))))
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
-                    ChapterSeekBar(
-                        position = position,
-                        duration = duration,
-                        chapters = chapters,
-                        title = item.title,
-                        onScrub = { scrub = it },
-                        onCommit = { sec ->
-                            scrub = null
-                            seek(sec.toInt())
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-
-                if (chapters.isNotEmpty()) {
-                    Row(
-                        Modifier.align(Alignment.TopEnd).padding(10.dp)
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(Color.Black.copy(alpha = 0.65f))
-                            .clickable { chaptersOpen = true }
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(YouTubeIcons.PlaylistOutlined, null, tint = Color.White,
-                            modifier = Modifier.size(16.dp))
-                        Spacer(Modifier.width(6.dp))
-                        Text("الفصول ${chapters.size}", fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium, color = Color.White)
+                    Box {
+                        ChapterSeekBar(
+                            position = position,
+                            duration = duration,
+                            chapters = chapters,
+                            title = item.title,
+                            onChaptersClick = { if (chapters.isNotEmpty()) chaptersOpen = true },
+                            onScrub = { scrub = it },
+                            onCommit = { sec ->
+                                scrub = null
+                                seek(sec.toInt())
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        DropdownMenu(
+                            expanded = chaptersOpen && chapters.isNotEmpty(),
+                            onDismissRequest = { chaptersOpen = false },
+                            modifier = Modifier.background(MaterialTheme.colorScheme.surface)
+                        ) {
+                            chapters.forEach { ch ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Text("${timeText(ch.start)}  ·  ${ch.title}",
+                                            fontSize = 12.sp, maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis)
+                                    },
+                                    onClick = {
+                                        chaptersOpen = false
+                                        seek(secondsOf(ch.start))
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1072,15 +1106,6 @@ fun VideoView(
                         modifier = Modifier.padding(top = 6.dp, bottom = 4.dp))
                 }
                 Spacer(Modifier.height(10.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    ChannelAvatar(item.avatar, 34)
-                    Spacer(Modifier.width(8.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(item.channel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    TextButton(onClick = openYoutube) { Text("يوتيوب") }
-                }
-                Spacer(Modifier.height(6.dp))
                 TextField(
                     value = inQuery,
                     onValueChange = { inQuery = it },
@@ -1172,195 +1197,6 @@ fun VideoView(
                 }
             }
 
-            if (chaptersOpen && chapters.isNotEmpty()) {
-                val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-                val activeIdx = activeChapterIdx
-                ModalBottomSheet(
-                    onDismissRequest = { chaptersOpen = false },
-                    sheetState = sheetState,
-                    containerColor = MaterialTheme.colorScheme.surfaceContainerLow
-                ) {
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
-                        Text("الفصول", style = MaterialTheme.typography.titleMedium,
-                            modifier = Modifier.padding(bottom = 10.dp))
-                        LazyColumn(Modifier.fillMaxWidth().heightIn(max = 420.dp)) {
-                            itemsIndexed(chapters, key = { _, ch -> ch.start + ch.title }) { idx, ch ->
-                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        chaptersOpen = false
-                                        seek(secondsOf(ch.start))
-                                    }
-                                    .padding(vertical = 6.dp),
-                                    verticalAlignment = Alignment.CenterVertically) {
-                                    Box(Modifier.width(112.dp).aspectRatio(16f / 9f)) {
-                                        Thumbnail(item.thumb,
-                                            Modifier.fillMaxSize().clip(RoundedCornerShape(8.dp)))
-                                        Box(
-                                            Modifier.align(Alignment.Center)
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .clickable { openYoutubeAt(secondsOf(ch.start)) },
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            Icon(YouTubeIcons.YouTube, "فتح في يوتيوب",
-                                                tint = Color.Unspecified,
-                                                modifier = Modifier.size(46.dp, 32.dp))
-                                        }
-                                    }
-                                    Spacer(Modifier.width(12.dp))
-                                    Column(Modifier.weight(1f)) {
-                                        Text(ch.title, fontSize = 13.sp,
-                                            fontWeight = if (idx == activeIdx) FontWeight.SemiBold
-                                                         else FontWeight.Normal,
-                                            maxLines = 2, overflow = TextOverflow.Ellipsis,
-                                            color = MaterialTheme.colorScheme.onSurface)
-                                        Spacer(Modifier.height(2.dp))
-                                        Text(timeText(ch.start), fontSize = 11.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                    }
-                                    if (idx == activeIdx) {
-                                        Icon(Icons.Default.PlayArrow, null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(18.dp))
-                                    }
-                                }
-                            }
-                        }
-                        Spacer(Modifier.height(20.dp))
-                    }
-                }
-            }
         }
     }
-}
-
-@Composable
-private fun ChapterSeekBar(
-    position: Float,
-    duration: Float,
-    chapters: List<com.mshmsdin.captionsearch.data.ChapterItem>,
-    title: String,
-    onScrub: (Float) -> Unit,
-    onCommit: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    accent: Color = Color.White
-) {
-    val measurer = rememberTextMeasurer()
-    var widthPx by remember { mutableFloatStateOf(1f) }
-    var dragging by remember { mutableStateOf(false) }
-    var dragX by remember { mutableFloatStateOf(0f) }
-    val dur = duration.coerceAtLeast(1f)
-    val frac = (if (dragging) dragX / widthPx else position / dur).coerceIn(0f, 1f)
-    val nowSec = (frac * dur).toInt()
-
-    Column(modifier) {
-        Row(Modifier.fillMaxWidth().padding(bottom = 2.dp),
-            verticalAlignment = Alignment.CenterVertically) {
-            Text(
-                chapters.lastOrNull { secondsOf(it.start) <= nowSec }?.title ?: title,
-                fontSize = 12.sp, fontWeight = FontWeight.Medium, color = Color.White,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
-            Text("${fmtClock(nowSec)} / ${fmtClock(duration.toInt())}",
-                fontSize = 11.sp, color = Color.White.copy(alpha = 0.8f),
-                modifier = Modifier.padding(start = 8.dp))
-        }
-        Canvas(
-            Modifier.fillMaxWidth().height(46.dp)
-                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
-                .pointerInput(dur) {
-                    detectTapGestures { o ->
-                        onCommit((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
-                    }
-                }
-                .pointerInput(dur) {
-                    detectHorizontalDragGestures(
-                        onDragStart = { o ->
-                            dragging = true
-                            dragX = o.x
-                            onScrub((o.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
-                        },
-                        onHorizontalDrag = { change, _ ->
-                            change.consume()
-                            dragX = change.position.x
-                            onScrub((change.position.x / size.width.toFloat()).coerceIn(0f, 1f) * dur)
-                        },
-                        onDragEnd = {
-                            dragging = false
-                            onCommit((dragX / size.width.toFloat()).coerceIn(0f, 1f) * dur)
-                        },
-                        onDragCancel = { dragging = false }
-                    )
-                }
-        ) {
-            val barY = size.height - 11.dp.toPx()
-            val barH = 4.dp.toPx()
-            val rad = CornerRadius(barH / 2f)
-            drawRoundRect(Color.White.copy(alpha = 0.30f),
-                Offset(0f, barY - barH / 2), Size(size.width, barH), rad)
-            drawRoundRect(accent,
-                Offset(0f, barY - barH / 2), Size(size.width * frac, barH), rad)
-
-            chapters.forEachIndexed { i, ch ->
-                val cs = secondsOf(ch.start).toFloat() / dur * size.width
-                val next = chapters.getOrNull(i + 1)
-                    ?.let { secondsOf(it.start).toFloat() / dur * size.width } ?: size.width
-                if (i > 0) drawLine(
-                    Color.White.copy(alpha = 0.9f),
-                    Offset(cs, barY - barH / 2 - 5.dp.toPx()),
-                    Offset(cs, barY + barH / 2 + 5.dp.toPx()),
-                    1.5.dp.toPx()
-                )
-                val segW = next - cs
-                if (segW > 44.dp.toPx()) {
-                    val laid = measurer.measure(
-                        AnnotatedString(ch.title),
-                        style = TextStyle(fontSize = 10.sp,
-                            color = Color.White.copy(alpha = 0.78f)),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        constraints = Constraints(
-                            maxWidth = (segW - 8.dp.toPx()).toInt().coerceAtLeast(1))
-                    )
-                    clipRect(cs + 2.dp.toPx(), 0f, next - 2.dp.toPx(), size.height) {
-                        drawText(laid, topLeft = Offset(cs + 3.dp.toPx(), 0f))
-                    }
-                }
-            }
-            drawCircle(Color.White, 7.dp.toPx(), Offset(size.width * frac, barY))
-            drawCircle(accent, 4.dp.toPx(), Offset(size.width * frac, barY))
-            if (dragging) {
-                val bubble = measurer.measure(
-                    AnnotatedString(fmtClock(nowSec)),
-                    style = TextStyle(fontSize = 11.sp, color = Color.Black,
-                        fontWeight = FontWeight.Bold)
-                )
-                val bw = bubble.size.width + 14.dp.toPx()
-                val bh = bubble.size.height + 6.dp.toPx()
-                val bx = (size.width * frac - bw / 2).coerceIn(0f, size.width - bw)
-                drawRoundRect(Color.White, Offset(bx, barY - bh - 14.dp.toPx()),
-                    Size(bw, bh), CornerRadius(6.dp.toPx()))
-                drawText(bubble,
-                    topLeft = Offset(bx + 7.dp.toPx(), barY - bh - 14.dp.toPx() + 3.dp.toPx()))
-            }
-        }
-    }
-}
-
-private fun durationSeconds(text: String): Int {
-    val p = text.split(':').mapNotNull { it.trim().toIntOrNull() }
-    return when (p.size) {
-        3 -> p[0] * 3600 + p[1] * 60 + p[2]
-        2 -> p[0] * 60 + p[1]
-        1 -> p[0]
-        else -> 0
-    }
-}
-
-private fun fmtClock(sec: Int): String {
-    val s = sec.coerceAtLeast(0)
-    val h = s / 3600
-    val m = (s % 3600) / 60
-    val r = s % 60
-    return if (h > 0) "%d:%02d:%02d".format(h, m, r) else "%02d:%02d".format(m, r)
 }
