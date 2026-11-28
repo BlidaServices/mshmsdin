@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.rememberScrollState
@@ -101,6 +102,7 @@ import com.mshmsdin.captionsearch.data.ChannelInfo
 import com.mshmsdin.captionsearch.data.FilterState
 import com.mshmsdin.captionsearch.data.SearchHit
 import com.mshmsdin.captionsearch.data.VideoItem
+import com.mshmsdin.captionsearch.ui.theme.FONT_NAMES
 import com.mshmsdin.captionsearch.ui.theme.THEME_NAMES
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -115,6 +117,8 @@ private fun isOnline(context: Context): Boolean {
     val caps = cm.getNetworkCapabilities(network) ?: return false
     return caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
 }
+
+private data class LocalHit(val text: String, val start: String, val kind: String)
 
 private const val HOME_PAGE = 10
 private const val SHORTS_PAGE = 10
@@ -740,6 +744,8 @@ fun SettingsSheet(
     onStyle: (String) -> Unit,
     currentTheme: String,
     onTheme: (String) -> Unit,
+    currentFont: String,
+    onFont: (String) -> Unit,
     onImport: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -764,6 +770,14 @@ fun SettingsSheet(
                         modifier = Modifier.padding(end = 6.dp))
                 }
             }
+            Spacer(Modifier.height(14.dp))
+            Text("الخط", style = MaterialTheme.typography.titleSmall)
+            Row(Modifier.horizontalScroll(rememberScrollState())) {
+                FONT_NAMES.forEach { f ->
+                    FilterChip(selected = currentFont == f, onClick = { onFont(f) },
+                        label = { Text(f) }, modifier = Modifier.padding(end = 6.dp))
+                }
+            }
             Spacer(Modifier.height(20.dp))
             TextButton(onClick = onDismiss, Modifier.fillMaxWidth()) { Text("إغلاق") }
         }
@@ -786,20 +800,49 @@ fun VideoView(
     val online = remember(item.id) { isOnline(context) }
     var chapters by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.ChapterItem>>(emptyList()) }
     var cues by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.Cue>>(emptyList()) }
+    var questions by remember { mutableStateOf<List<com.mshmsdin.captionsearch.data.QuestionHit>>(emptyList()) }
     var webView by remember { mutableStateOf<WebView?>(null) }
     var playerReady by remember(item.id) { mutableStateOf(false) }
-    var detailTab by remember(item.id) { mutableStateOf("desc") }
-
-    LaunchedEffect(highlight) {
-        if (!highlight.isNullOrBlank()) detailTab = "captions"
-    }
+    var detailTab by remember(item.id) { mutableStateOf("captions") }
+    var inQuery by remember(item.id) { mutableStateOf("") }
+    val cueListState = rememberLazyListState()
 
     LaunchedEffect(item.rowId) {
         val data = withContext(Dispatchers.IO) {
-            repository.chaptersOf(item.rowId) to repository.cuesOf(item.rowId)
+            Triple(
+                repository.chaptersOf(item.rowId),
+                repository.cuesOf(item.rowId),
+                repository.questionsOf(item.id)
+            )
         }
         chapters = data.first
         cues = data.second
+        questions = data.third
+    }
+
+    LaunchedEffect(highlight, start, cues) {
+        if (highlight.isNullOrBlank() && start == 0) return@LaunchedEffect
+        val idx = cues.indexOfFirst { secondsOf(it.startTime) == start }
+            .takeIf { it >= 0 }
+            ?: cues.indices.minByOrNull { kotlin.math.abs(secondsOf(cues[it].startTime) - start) } ?: -1
+        if (idx >= 0) cueListState.animateScrollToItem(idx)
+    }
+
+    val inHits = remember(inQuery, cues, chapters, questions, item.description) {
+        if (inQuery.isBlank()) emptyList() else buildList {
+            questions.forEach {
+                if (it.text.contains(inQuery, true)) add(LocalHit(it.text, it.start, "سؤال"))
+            }
+            cues.forEach {
+                if (it.text.contains(inQuery, true)) add(LocalHit(it.text, it.startTime, "النص"))
+            }
+            chapters.forEach {
+                if (it.title.contains(inQuery, true)) add(LocalHit(it.title, it.start, "الفصول"))
+            }
+            item.description.lines().forEach { line ->
+                if (line.contains(inQuery, true)) add(LocalHit(line.trim(), "", "الوصف"))
+            }
+        }.take(40)
     }
 
     val seek: (Int) -> Unit = { sec ->
@@ -898,14 +941,13 @@ fun VideoView(
                     Spacer(Modifier.width(8.dp))
                     Column(Modifier.weight(1f)) {
                         Text(item.channel, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-                        val published = item.publishedAt.ifBlank { "${item.date} ${item.time}" }
-                        Text("$published · ${durationText(item.duration)}", fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(dateTimeLabel(item.publishedAt.ifBlank { item.date }, item.duration),
+                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = openYoutube) { Text("يوتيوب") }
                 }
                 Spacer(Modifier.height(12.dp))
-                val detailTabs = listOf("desc" to "الوصف", "chapters" to "الفصول", "captions" to "الكابشن")
+                val detailTabs = listOf("captions" to "النص", "chapters" to "الفصول", "desc" to "الوصف")
                 PrimaryTabRow(
                     selectedTabIndex = detailTabs.indexOfFirst { it.first == detailTab }.coerceAtLeast(0),
                     containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -919,50 +961,101 @@ fun VideoView(
                     }
                 }
             }
-            Box(Modifier.weight(1f)) {
-                when (detailTab) {
-                    "desc" -> Column(
-                        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
-                            .padding(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        val published = item.publishedAt.ifBlank { "${item.date} ${item.time}" }
-                        Text("تاريخ النشر: $published", fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Spacer(Modifier.height(8.dp))
-                        Text(item.description.ifBlank { "لا يوجد وصف" }, fontSize = 13.sp)
+                Spacer(Modifier.height(8.dp))
+                TextField(
+                    value = inQuery,
+                    onValueChange = { inQuery = it },
+                    placeholder = { Text("ابحث في النص والفصول والوصف والأسئلة", fontSize = 12.sp) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                    keyboardActions = KeyboardActions(onSearch = {}),
+                    colors = TextFieldDefaults.colors(
+                        focusedContainerColor = Color.Transparent,
+                        unfocusedContainerColor = Color.Transparent,
+                        disabledContainerColor = Color.Transparent,
+                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
+                        unfocusedIndicatorColor = MaterialTheme.colorScheme.outlineVariant
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (inQuery.isNotBlank()) {
+                LazyColumn(
+                    Modifier.weight(1f),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                ) {
+                    item {
+                        Text("نتائج البحث (${inHits.size})", fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(bottom = 6.dp))
                     }
-                    "chapters" -> LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        if (chapters.isEmpty()) item { Text("لا توجد فصول", fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        items(chapters, key = { it.start + it.title }) { ch ->
-                            Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(ch.start)) }.padding(vertical = 7.dp)) {
-                                Text(timeText(ch.start), color = MaterialTheme.colorScheme.primary, fontSize = 12.sp,
-                                    modifier = Modifier.width(68.dp))
-                                Text(ch.title, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                    if (inHits.isEmpty()) item {
+                        Text("لا توجد نتائج", fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(16.dp))
+                    }
+                    items(inHits) { hit ->
+                        Row(Modifier.fillMaxWidth().clickable {
+                            if (hit.start.isNotBlank()) seek(secondsOf(hit.start))
+                        }.padding(vertical = 7.dp)) {
+                            Text(hit.kind, fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.width(54.dp))
+                            HighlightedText(hit.text, inQuery, fontSize = 12.sp, maxLines = 3,
+                                modifier = Modifier.weight(1f))
+                            if (hit.start.isNotBlank()) Text(timeText(hit.start), fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(start = 6.dp))
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            } else {
+                Box(Modifier.weight(1f)) {
+                    when (detailTab) {
+                        "desc" -> Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            Text(item.description.ifBlank { "لا يوجد وصف" }, fontSize = 13.sp)
+                        }
+                        "chapters" -> LazyColumn(
+                            Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            if (chapters.isEmpty()) item { Text("لا توجد فصول", fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            items(chapters, key = { it.start + it.title }) { ch ->
+                                Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(ch.start)) }
+                                    .padding(vertical = 7.dp)) {
+                                    Text(timeText(ch.start), color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 12.sp, modifier = Modifier.width(68.dp))
+                                    Text(ch.title, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                }
                             }
                         }
-                    }
-                    else -> LazyColumn(
-                        Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
-                    ) {
-                        if (cues.isEmpty()) item { Text("لا يوجد كابشن", fontSize = 13.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                        items(cues, key = { it.rowId }) { cue ->
-                            val matched = !highlight.isNullOrBlank() &&
-                                cue.text.contains(highlight, ignoreCase = true)
-                            Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(cue.startTime)) }
-                                .background(if (matched) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
-                                .padding(horizontal = 6.dp, vertical = 6.dp)) {
-                                Text(timeText(cue.startTime),
-                                    color = if (matched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
-                                    fontSize = 12.sp, modifier = Modifier.width(68.dp))
-                                if (matched) HighlightedText(cue.text, highlight, fontSize = 13.sp,
-                                    maxLines = Int.MAX_VALUE, modifier = Modifier.weight(1f))
-                                else Text(cue.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                        else -> LazyColumn(
+                            Modifier.fillMaxSize(),
+                            state = cueListState,
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 12.dp)
+                        ) {
+                            if (cues.isEmpty()) item { Text("لا يوجد نص", fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                            items(cues, key = { it.rowId }) { cue ->
+                                val matched = (!highlight.isNullOrBlank() &&
+                                    cue.text.contains(highlight, ignoreCase = true)) ||
+                                    secondsOf(cue.startTime) == start
+                                Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(cue.startTime)) }
+                                    .background(if (matched) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
+                                    .padding(horizontal = 6.dp, vertical = 6.dp)) {
+                                    Text(timeText(cue.startTime),
+                                        color = if (matched) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.primary,
+                                        fontSize = 12.sp, modifier = Modifier.width(68.dp))
+                                    if (matched) HighlightedText(cue.text, highlight ?: inQuery,
+                                        fontSize = 13.sp, maxLines = Int.MAX_VALUE,
+                                        modifier = Modifier.weight(1f))
+                                    else Text(cue.text, fontSize = 13.sp, modifier = Modifier.weight(1f))
+                                }
                             }
                         }
                     }

@@ -7,6 +7,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import com.mshmsdin.captionsearch.R
 
 val THEME_NAMES = listOf("royal", "green", "red", "yellow", "blue", "carbon")
 
@@ -75,14 +78,25 @@ fun themeScheme(name: String, dark: Boolean): ColorScheme {
     )
 }
 
+val FONT_NAMES = listOf("افتراضي", "أميري", "القاهرة", "نصخ")
+
+private fun fontFamily(name: String) = when (name) {
+    "أميري" -> FontFamily(Font(R.font.amiri_regular))
+    "القاهرة" -> FontFamily(Font(R.font.cairo_regular))
+    "نصخ" -> FontFamily(Font(R.font.noto_naskh_arabic))
+    else -> FontFamily.Default
+}
+
 @Composable
 fun CaptionSearchTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     themeName: String = "royal",
+    fontName: String = "افتراضي",
     content: @Composable () -> Unit
 ) {
     MaterialTheme(
         colorScheme = themeScheme(themeName, darkTheme),
+        typography = androidx.compose.material3.Typography(defaultFontFamily = fontFamily(fontName)),
         content = content
     )
 }

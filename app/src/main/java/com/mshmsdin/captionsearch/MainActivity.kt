@@ -54,6 +54,7 @@ import com.mshmsdin.captionsearch.data.VideoItem
 import com.mshmsdin.captionsearch.data.VideoTarget
 import com.mshmsdin.captionsearch.data.YouTubeIcons
 import com.mshmsdin.captionsearch.ui.theme.CaptionSearchTheme
+import com.mshmsdin.captionsearch.ui.theme.FONT_NAMES
 import com.mshmsdin.captionsearch.youtube.ChannelDetailView
 import com.mshmsdin.captionsearch.youtube.ChannelsView
 import com.mshmsdin.captionsearch.youtube.ChannelUiState
@@ -93,6 +94,8 @@ private fun CaptionAppRoot() {
     var tab by remember { mutableStateOf(0) }
     var style by remember { mutableStateOf("large") }
     var theme by remember { mutableStateOf("royal") }
+    val prefs = remember { context.getSharedPreferences("captionsearch_prefs", Context.MODE_PRIVATE) }
+    var font by remember { mutableStateOf(prefs.getString("font", "افتراضي") ?: "افتراضي") }
     var filters by remember { mutableStateOf(FilterState()) }
     var listResult by remember { mutableStateOf<Pair<FilterState, String>?>(null) }
     var searchChannel by remember { mutableStateOf<String?>(null) }
@@ -102,7 +105,6 @@ private fun CaptionAppRoot() {
     var searchFocus by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
     var showSettings by remember { mutableStateOf(false) }
-    val prefs = remember { context.getSharedPreferences("captionsearch_prefs", Context.MODE_PRIVATE) }
     var onboardingFinished by remember { mutableStateOf(prefs.getBoolean("onboarding_done", false)) }
     var onboardingStep by remember { mutableStateOf(if (onboardingFinished) 2 else 0) }
     var importDone by remember { mutableStateOf(false) }
@@ -139,7 +141,7 @@ private fun CaptionAppRoot() {
         if (opened) version++
     }
 
-    CaptionSearchTheme(darkTheme = true, themeName = theme) {
+    CaptionSearchTheme(darkTheme = true, themeName = theme, fontName = font) {
         if (!onboardingFinished) {
             OnboardingScreen(
                 repository = repository,
@@ -285,7 +287,8 @@ private fun CaptionAppRoot() {
         }
 
         if (showSettings) {
-            SettingsSheet(style, { style = it }, theme, { theme = it },
+            SettingsSheet(style, { style = it }, theme, { theme = it }, font, { font = it;
+                prefs.edit().putString("font", font).apply() },
                 onImport = { importer.launch(arrayOf("*/*")) },
                 onDismiss = { showSettings = false })
         }

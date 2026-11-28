@@ -46,6 +46,15 @@ import com.mshmsdin.captionsearch.data.YouTubeIcons
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
+fun displayDate(raw: String): String {
+    val clean = raw.substringBefore('T')
+    val p = clean.split("-")
+    return if (p.size == 3) "${p[2]}/${p[1]}/${p[0].takeLast(2)}" else clean
+}
+
+fun dateTimeLabel(date: String, duration: String): String =
+    "${displayDate(date)} ${durationText(duration)}"
+
 fun durationText(raw: String): String {
     val p = raw.split(":")
     if (p.size != 3) return raw
@@ -222,7 +231,7 @@ private fun VideoCardLarge(item: VideoItem, onClick: () -> Unit) {
                 Spacer(Modifier.height(4.dp))
                 Text(item.channel, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(item.date, fontSize = 11.sp,
+                Text(dateTimeLabel(item.date, item.duration), fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
@@ -266,7 +275,8 @@ private fun VideoCardSmall(item: VideoItem, onClick: () -> Unit) {
                 overflow = TextOverflow.Ellipsis, lineHeight = 18.sp)
             Spacer(Modifier.height(4.dp))
             Text(item.channel, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            Text(item.date, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+            Text(dateTimeLabel(item.date, item.duration), fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
         }
     }
 }

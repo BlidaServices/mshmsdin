@@ -75,6 +75,11 @@ data class ChapterItem(
     val title: String
 )
 
+data class QuestionHit(
+    val text: String,
+    val start: String
+)
+
 data class SuggestionItem(
     val label: String,
     val kind: String,

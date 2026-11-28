@@ -851,6 +851,27 @@ class CaptionRepository(private val context: Context) {
         return out.distinctBy { it.label }.take(limit)
     }
 
+    fun questionsOf(videoId: String): List<QuestionHit> {
+        val c = conn ?: return emptyList()
+        if (!tableExists(c, "qna_questions")) return emptyList()
+        return runCatching {
+            c.prepareStatement(
+                "SELECT question,start_time FROM qna_questions WHERE video_id=? " +
+                    "ORDER BY start_time"
+            ).use { ps ->
+                ps.setString(1, videoId)
+                ps.executeQuery().use { rs ->
+                    buildList {
+                        while (rs.next()) add(QuestionHit(
+                            text = rs.getString(1) ?: "",
+                            start = rs.getString(2) ?: ""
+                        ))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
     fun chaptersOf(videoRowId: Long): List<ChapterItem> {
         val c = conn ?: return emptyList()
         return runCatching {
