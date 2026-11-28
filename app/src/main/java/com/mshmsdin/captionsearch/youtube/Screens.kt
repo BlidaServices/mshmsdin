@@ -92,6 +92,7 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
@@ -111,6 +112,7 @@ import com.mshmsdin.captionsearch.data.ChannelInfo
 import com.mshmsdin.captionsearch.data.FilterState
 import com.mshmsdin.captionsearch.data.SearchHit
 import com.mshmsdin.captionsearch.data.VideoItem
+import com.mshmsdin.captionsearch.data.YouTubeIcons
 import com.mshmsdin.captionsearch.ui.theme.FONT_NAMES
 import com.mshmsdin.captionsearch.ui.theme.THEME_NAMES
 import kotlinx.coroutines.CancellationException
