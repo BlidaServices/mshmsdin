@@ -1085,6 +1085,11 @@ fun VideoView(
                     value = inQuery,
                     onValueChange = { inQuery = it },
                     placeholder = { Text("ابحث في نص المقطع فقط", fontSize = 12.sp) },
+                    leadingIcon = {
+                        Icon(Icons.Default.Search, "بحث",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(18.dp))
+                    },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                     keyboardActions = KeyboardActions(onSearch = {}),
@@ -1117,12 +1122,21 @@ fun VideoView(
                     items(inHits) { hit ->
                         Row(Modifier.fillMaxWidth().clickable { seek(secondsOf(hit.start)) }
                             .padding(horizontal = 6.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.Top) {
+                            verticalAlignment = Alignment.CenterVertically) {
                             Text(timeText(hit.start), fontSize = 11.sp,
                                 color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.width(64.dp))
                             HighlightedText(hit.text, inQuery, fontSize = 13.sp,
                                 maxLines = 3, modifier = Modifier.weight(1f))
+                            IconButton(onClick = {
+                                inQuery = ""
+                                follow = true
+                                seek(secondsOf(hit.start))
+                            }, modifier = Modifier.size(36.dp)) {
+                                Icon(YouTubeIcons.Eye, "عرض في الكابشن",
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp))
+                            }
                         }
                         HorizontalDivider()
                     }
@@ -1188,6 +1202,7 @@ fun VideoView(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(YouTubeIcons.YouTube, "فتح في يوتيوب",
+                                                tint = Color.Unspecified,
                                                 modifier = Modifier.size(46.dp, 32.dp))
                                         }
                                     }
