@@ -8,6 +8,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import com.mshmsdin.captionsearch.R
 
@@ -80,6 +81,29 @@ fun themeScheme(name: String, dark: Boolean): ColorScheme {
 
 val FONT_NAMES = listOf("افتراضي", "أميري", "القاهرة", "نصخ")
 
+private fun typographyFor(name: String): androidx.compose.material3.Typography {
+    val family = fontFamily(name)
+    val base = androidx.compose.material3.Typography()
+    fun TextStyle.withFont() = copy(fontFamily = family)
+    return base.copy(
+        displayLarge = base.displayLarge.withFont(),
+        displayMedium = base.displayMedium.withFont(),
+        displaySmall = base.displaySmall.withFont(),
+        headlineLarge = base.headlineLarge.withFont(),
+        headlineMedium = base.headlineMedium.withFont(),
+        headlineSmall = base.headlineSmall.withFont(),
+        titleLarge = base.titleLarge.withFont(),
+        titleMedium = base.titleMedium.withFont(),
+        titleSmall = base.titleSmall.withFont(),
+        bodyLarge = base.bodyLarge.withFont(),
+        bodyMedium = base.bodyMedium.withFont(),
+        bodySmall = base.bodySmall.withFont(),
+        labelLarge = base.labelLarge.withFont(),
+        labelMedium = base.labelMedium.withFont(),
+        labelSmall = base.labelSmall.withFont()
+    )
+}
+
 private fun fontFamily(name: String) = when (name) {
     "أميري" -> FontFamily(Font(R.font.amiri_regular))
     "القاهرة" -> FontFamily(Font(R.font.cairo_regular))
@@ -96,7 +120,7 @@ fun CaptionSearchTheme(
 ) {
     MaterialTheme(
         colorScheme = themeScheme(themeName, darkTheme),
-        typography = androidx.compose.material3.Typography(defaultFontFamily = fontFamily(fontName)),
+        typography = typographyFor(fontName),
         content = content
     )
 }

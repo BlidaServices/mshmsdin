@@ -978,7 +978,6 @@ fun VideoView(
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
-            }
             if (inQuery.isNotBlank()) {
                 LazyColumn(
                     Modifier.weight(1f),
